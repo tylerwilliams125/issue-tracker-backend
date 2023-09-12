@@ -31,7 +31,7 @@ router.put('/:bugId/classify',(req,res) =>{
 });
 
 router.put('/:bugId/assign', (req,res) =>{
-    //FIXME: assign bug to a user and send response as JSON   
+    //FIXME: assign bug to a user and send response as JSON
 });
 
 router.put("/:bugId/close", (req,res) =>{
