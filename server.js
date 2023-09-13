@@ -6,12 +6,18 @@ const debugMain = debug('app:Server');
 import path from 'path';
 import { fileURLToPath } from 'url';
 import express from 'express';
+import { UserRouter } from './routes/api/user.js';
+import { BugRouter } from './routes/api/bug.js';
+
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 //create our web server
 const app = express();
+app.use('/api/users', UserRouter);
+app.use('/api/bugs', BugRouter);
 
 //register routes
 app.get('/', (req, res) => {
