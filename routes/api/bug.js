@@ -1,99 +1,95 @@
 import express from 'express'
 const router = express.Router();
 import {nanoid} from 'nanoid';
-
+import{connect,getBugs,getBugById,addBug,updateBug,classifyBug} from '../../database.js';
 import debug from 'debug';
 const debugBug = debug ('app.BugRouter');
 
 router.use(express.urlencoded({extended:false}));
 
-const bugsArray = [
-    {"title":"Bonzi Buddy","description":"Bonzi Buddy will pop up and sing Chanel","stepsToReproduce":"see on both sides like chanel","classification":"Munkey","classifiedOn":new Date(),"lastUpdated": new Date(),"assignedToUserId":1 ,"assignedToUserName":"Tyler","assignedOn":new Date(), "_id":1},
-    {"title":"Bugs Bunny","description":"Bugs will put a pipe bomb in your mailbox","stepsToReproduce":"eat his carrots","classification":"Bunnyboi","classifiedOn":new Date(),"lastUpdated": new Date(),"assignedToUserId": 8,"assignedToUserName":"Ada Wong ","assignedOn":new Date(), "_id":2},
-    {"title":"As Nodt's Tatar Foras","description":"As Nodt will make you feel intense fear","stepsToReproduce":"make him use his Vollstandig", "classification":"Sternritter","classifiedOn": new Date(),"lastUpdated": Date(),"assignedToUserId": 7 ,"assignedToUserName":"Leon Kennedy ","assignedOn":new Date(), "_id":3}
-];
 
-router.get('/list', (req,res) => {
-  debugBug('bug list route hit')
-  res.status(200).json(bugsArray);
-});
-
-router.get('/:bugId', (req,res) =>{
-    const bugId = req.params.bugId;
-    //FIXME: get bug from bugsArray and send response as JSON
-      //Reads the userID from the URL and stores in a variable
-    const bug = bugsArray.find(bug => bug._id == bugId)
-  if(bug){
-    res.status(200).json(bug);
-  }else{
-      res.status(404).type('text/plain').send(`Bug ${bugId} not found`);
+router.get('/list', async (req,res) => {
+  debugBug('Getting all Bugs')
+  try{
+    const db = await connect();
+    const bugs = await getBugs();
+    res.status(200).json(bugs)
+  }catch(err){
+    res.status(500).json({error: err.stack});
   }
 });
 
-router.post('/new', (req,res) => {
+router.get('/:bugId', async (req,res) =>{
+    const bugId = req.params.bugId;
+    //FIXME: get bug from bugsArray and send response as JSON
+  try{
+    const bug = await getBugById(bugId);
+    if (bug == bugId){
+      res.status(404).json({message: `Bug ${bugId} not found`});
+    }else{
+     
+      res.status(200).json(bug);
+    }
+    
+  }catch(err){
+    res.status(500).json({error: err.stack});
+  }
+});
+
+router.post('/new', async (req,res) => {
     //FIXME:create a new bug and send response as JSON
     const { title, description, stepsToReproduce} = req.body;
     const newBug = {title, description, stepsToReproduce} ;
-    if(title, description, stepsToReproduce)
-    {
-      const id = nanoid();
-      newBug._id = id;
-      bugsArray.push(newBug);
-      res.status(200).type('text/plain').send(`New Bug Reported!`);
+
+    try {
+      if (!title || !description || !stepsToReproduce) {
+        res.status(400).json({ error: 'Missing required data.' });
+        return;
+      }
+      const newBug = {title,description,stepsToReproduce,createdAt: new Date()};
+      const result = await addBug(newBug);
+
+      res.status(200).json({ message: `New Bug Reported!`});
+    } catch (err) {
+      console.error('Database error:', err);
+      res.status(500).json({ error: 'Internal server error' });
     }
-    if (!title || !description|| !stepsToReproduce )
-    {
-      return res.status(400).type('text/plain').send('Invalid data provided.');
-    };
 
 });
 
-router.put('/:bugId',(req,res) => {
+router.put('/:bugId', async (req,res) => {
     //FIXME: update existing bug and send response as JSON
     const bugId = req.params.bugId;
-  const currentBug = bugsArray.find(bug => bug._id == bugId);
-
-  //for this line to work, you have to have a body parser
-  const updatedBug = req.body;
-
-  if(currentBug){
-      for(const key in updatedBug){
-          if(currentBug[key] != updatedBug[key]){
-            currentBug[key] = updatedBug[key];
-          }
+    const updatedBug = req.body;
+   
+    try{
+      const updateResult = await updateBug(bugId,updatedBug);
+        if(updateResult.modifiedCount == 1){
+        res.status(200).json({message: `Bug ${bugId} updated`})
+        }else{
+          res.status(400).json({message: `Bug ${bugId} not updated`})
+        }
+      }catch(err){
+        res.status(500).json({error: err.stack});
       }
-
-      //save the currentBug into the array
-      const index = bugsArray.findIndex(bug => bug._id == bugId);
-      if(index != -1){
-        bugsArray[index] = currentBug;
-      }
-
-     res.status(200).type('text/plain').send(`Bug updated!`);
-  }else{
-      res.status(404).type('text/plain').send(`User ${bugId} not found`);
-  }
-  res.json(updatedBug);
 });
 
-router.put('/:bugId/classify',(req,res) =>{
+router.put('/:bugId/classify',async (req,res) =>{
     //FIXME: classify bug and send response as JSON
-    const bugId = req.params.bugId;
-    const { classification } = req.body;
+    const id = req.params.id;
+    const {classification } = req.body;
 
     if (!classification) {
         return res.status(400).type('text/plain').send('Invalid data provided. Classification is missing.');
     }
+    const classifiedBug= {classification, createdAt: new Date()};
+    const classifyResult = await classifyBug(id,classifiedBug);
 
-    const bug = bugsArray.find((bug) => bug._id === bugId);
-
-    if (!bug) {
-        return res.status(404).type('text/plain').send(`Bug ${bugId} not found.`);
+    if (!id) {
+        return res.status(404).type('text/plain').send(`Bug ${id} not found.`);
     }
 
-    bug.classification = classification;
-    bug.classifiedOn = new Date();
-    bug.lastUpdated = new Date();
+  
 
     res.status(200).type('text/plain').send('Bug classified!');
 

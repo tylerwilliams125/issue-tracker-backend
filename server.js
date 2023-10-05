@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import express from 'express';
 import { UserRouter } from './routes/api/user.js';
 import { BugRouter } from './routes/api/bug.js';
+import {ping} from './database.js';
 
 
 
