@@ -113,9 +113,19 @@ async function classifyBug(id, classifiedBug){
   return result;
 }
 
+async function assignBug(id, assignedBug){
+  const db = await connect();
+  const result = await db.collection("Bug").updateOne({_id: new ObjectId(id)},{$set:{...assignedBug}});
+  console.table(result);
+  return result;
+}
+
+
+
+
 
 // export functions
-export {newId,connect,ping,getUsers,getUserById,addUser,loginUser,updateUser,deleteUser,getBugs,getBugById,addBug,updateBug,classifyBug};
+export {newId,connect,ping,getUsers,getUserById,addUser,loginUser,updateUser,deleteUser,getBugs,getBugById,addBug,updateBug,classifyBug,assignBug};
 
 // test the database connection
 ping();

@@ -1,12 +1,40 @@
 import express from 'express'
 const router = express.Router();
 import {nanoid} from 'nanoid';
-import{connect,getBugs,getBugById,addBug,updateBug,classifyBug} from '../../database.js';
+import Joi from 'joi';
+import{connect,getBugs,getBugById,addBug,updateBug,classifyBug,assignBug} from '../../database.js';
 import debug from 'debug';
+import { validBody } from '../../middleWare/validBody.js';
+import { validId } from '../../middleWare/validId.js';
+
 const debugBug = debug ('app.BugRouter');
 
 router.use(express.urlencoded({extended:false}));
 
+const newBugSchema = Joi.object({
+  title: Joi.string().required(),
+  description: Joi.string().required(),
+  stepsToReproduce: Joi.string().required(),
+});
+
+const updateBugSchema = Joi.object({
+  title: Joi.string(),
+  description: Joi.string(),
+  stepsToReproduce: Joi.string(),
+});
+
+const classifyBugSchema = Joi.object({
+  classification: Joi.string().valid('classification1', 'classification2', 'classification3')
+});
+
+const assignBugSchema = Joi.object({
+  assignedToUserId: Joi.string().required(),
+  assignedToUserName: Joi.string().required(),
+});
+
+const closeBugSchema = Joi.object({
+  closed: Joi.boolean().required(),
+});
 
 router.get('/list', async (req,res) => {
   debugBug('Getting all Bugs')
@@ -19,109 +47,191 @@ router.get('/list', async (req,res) => {
   }
 });
 
-router.get('/:bugId', async (req,res) =>{
+router.get('/:bugId',validId, async (req,res) =>{
     const bugId = req.params.bugId;
     //FIXME: get bug from bugsArray and send response as JSON
-  try{
-    const bug = await getBugById(bugId);
-    if (bug == bugId){
-      res.status(404).json({message: `Bug ${bugId} not found`});
-    }else{
-     
-      res.status(200).json(bug);
-    }
-    
-  }catch(err){
-    res.status(500).json({error: err.stack});
+    if (!isValidObjectId(bugId)) {
+      return res.status(404).json({ error: `bugId ${bugId} is not a valid ObjectId.` });
+  }
+
+  try {
+      const bug = await getBugById(bugId);
+      
+      if (!bug) {
+          res.status(404).json({ message: `Bug ${bugId} not found` });
+      } else {
+          res.status(200).json(bug);
+      }
+  } catch (err) {
+      res.status(500).json({ error: err.stack });
   }
 });
 
-router.post('/new', async (req,res) => {
+router.post('/new',validBody(newBugSchema), async (req,res) => {
     //FIXME:create a new bug and send response as JSON
-    const { title, description, stepsToReproduce} = req.body;
-    const newBug = {title, description, stepsToReproduce} ;
+    const { title, description, stepsToReproduce } = req.body;
+
+    // Validate the request data against the schema
+    const { error } = newBugSchema.validate({ title, description, stepsToReproduce });
+
+    if (error) {
+        return res.status(400).json({ error: error.details });
+    }
 
     try {
-      if (!title || !description || !stepsToReproduce) {
-        res.status(400).json({ error: 'Missing required data.' });
-        return;
-      }
-      const newBug = {title,description,stepsToReproduce,createdAt: new Date()};
-      const result = await addBug(newBug);
+        const newBug = {
+            title,
+            description,
+            stepsToReproduce,
+            createdAt: new Date()
+        };
 
-      res.status(200).json({ message: `New Bug Reported!`});
+        const result = await addBug(newBug);
+
+        res.status(200).json({ message: 'New Bug Reported!' });
     } catch (err) {
-      console.error('Database error:', err);
-      res.status(500).json({ error: 'Internal server error' });
+        console.error('Database error:', err);
+        res.status(500).json({ error: 'Internal server error' });
     }
 
 });
 
-router.put('/:bugId', async (req,res) => {
+router.put('/:bugId',validBody(updateBugSchema), async (req,res) => {
     //FIXME: update existing bug and send response as JSON
     const bugId = req.params.bugId;
-    const updatedBug = req.body;
-   
-    try{
-      const updateResult = await updateBug(bugId,updatedBug);
-        if(updateResult.modifiedCount == 1){
-        res.status(200).json({message: `Bug ${bugId} updated`})
-        }else{
-          res.status(400).json({message: `Bug ${bugId} not updated`})
+
+    // Check if bugId is a valid ObjectId
+    if (!isValidObjectId(bugId)) {
+        return res.status(404).json({ error: `bugId ${bugId} is not a valid ObjectId.` });
+    }
+
+    try {
+        // Validate the request data against the schema
+        const { error } = updateBugSchema.validate(req.body);
+
+        if (error) {
+            return res.status(400).json({ error: error.details });
         }
-      }catch(err){
-        res.status(500).json({error: err.stack});
-      }
+
+        // Construct the update object with only the fields provided in the request
+        const updatedBug = { ...req.body };
+
+        const updateResult = await updateBug(bugId, updatedBug);
+
+        if (updateResult.modifiedCount === 1) {
+            res.status(200).json({ message: `Bug ${bugId} updated` });
+        } else {
+            res.status(400).json({ message: `Bug ${bugId} not updated` });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.stack });
+    }
 });
 
-router.put('/:bugId/classify',async (req,res) =>{
+router.put('/:bugId/classify',validBody(classifyBugSchema),async (req,res) =>{
     //FIXME: classify bug and send response as JSON
-    const id = req.params.id;
-    const {classification } = req.body;
+    const bugId = req.params.bugId;
 
-    if (!classification) {
-        return res.status(400).type('text/plain').send('Invalid data provided. Classification is missing.');
-    }
-    const classifiedBug= {classification, createdAt: new Date()};
-    const classifyResult = await classifyBug(id,classifiedBug);
-
-    if (!id) {
-        return res.status(404).type('text/plain').send(`Bug ${id} not found.`);
+    // Check if bugId is a valid ObjectId
+    if (!isValidObjectId(bugId)) {
+        return res.status(404).json({ error: `bugId ${bugId} is not a valid ObjectId.` });
     }
 
-  
+    // Read the classification data from the request body
+    const { classification } = req.body;
 
-    res.status(200).type('text/plain').send('Bug classified!');
+    // Validate the request data against the schema
+    const { error } = classifyBugSchema.validate({ classification });
+
+    if (error) {
+        return res.status(400).json({ error: error.details });
+    }
+
+    try {
+        if (!bugId) {
+            return res.status(404).json({ error: `Bug ${bugId} not found.` });
+        }
+
+        const classifiedBug = { classification, createdAt: new Date() };
+        const classifyResult = await classifyBug(bugId, classifiedBug);
+
+        res.status(200).json({ message: 'Bug classified!' });
+    } catch (err) {
+        res.status(500).json({ error: err.stack });
+    }
 
 });
 
-router.put('/:bugId/assign', (req,res) =>{
+router.put('/:bugId/assign',validBody(assignBugSchema), async (req,res) =>{
     //FIXME: assign bug to a user and send response as JSON
     const bugId = req.params.bugId;
+
+    // Check if bugId is a valid ObjectId
+    if (!isValidObjectId(bugId)) {
+        return res.status(404).json({ error: `bugId ${bugId} is not a valid ObjectId.` });
+    }
+
+    // Read the assignedToUserId and assignedToUserName from the request body
     const { assignedToUserId, assignedToUserName } = req.body;
-    const bug = bugsArray.find((bug) => bug._id === bugId);
 
+    // Validate the request data against the schema
+    const { error } = assignBugSchema.validate({ assignedToUserId, assignedToUserName });
 
-  // Check if assignedToUserId and assignedToUserName are missing or invalid
-  if (!assignedToUserId || !assignedToUserName) {
-    return res.status(400).type('text/plain').send('Invalid data provided. assignedToUserId and assignedToUserName are required.');
-  }
+    if (error) {
+        return res.status(400).json({ error: error.details });
+    }
 
-  if (!bug) {
-    return res.status(404).type('text/plain').send(`Bug ${bugId} not found.`);
-  }
+    try {
+        // Query the database for the user's info based on assignedToUserId (if needed)
 
-  // Update the bug's assignedToUserId, assignedToUserName, assignedOn, and lastUpdated fields
-  bug.assignedToUserId = assignedToUserId;
-  bug.assignedToUserName = assignedToUserName;
-  bug.assignedOn = new Date();
-  bug.lastUpdated = new Date();
+        // Check if the bug exists
+        const bug = await getBugById(id); 
 
-  res.status(200).type('text/plain').send('Bug assigned!');
+        if (!bug) {
+            return res.status(404).json({ error: `Bug ${bugId} not found.` });
+        }
+
+        // Update the bug's assignedToUserId, assignedToUserName, assignedOn, and lastUpdated fields
+        bug.assignedToUserId = assignedToUserId;
+        bug.assignedToUserName = assignedToUserName;
+        bug.assignedOn = new Date();
+        bug.lastUpdated = new Date();
+
+        res.status(200).json({ message: 'Bug assigned!' });
+    } catch (err) {
+        console.error('Database error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+
 });
 
-router.put("/:bugId/close", (req,res) =>{
+router.put("/:bugId/close",validBody(closeBugSchema), (req,res) =>{
     //FIXME: close bug and send response as JSON
+    const bugId = req.params.bugId;
+
+    // Check if bugId is a valid ObjectId
+    if (!isValidObjectId(bugId)) {
+        return res.status(404).json({ error: `bugId ${bugId} is not a valid ObjectId.` });
+    }
+
+    // Read the 'closed' value from the request body
+    const { closed } = req.body;
+
+    // Validate the request data against the schema
+    const { error } = closeBugSchema.validate({ closed });
+
+    if (error) {
+        return res.status(400).json({ error: error.details });
+    }
+
+    try {
+        
+
+        res.status(200).json({ message: 'Bug closed!' });
+    } catch (err) {
+        console.error('Database error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
 
 });
 
