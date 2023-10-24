@@ -42,25 +42,25 @@ router.get('/list', async (req, res) =>{
   debugUser('Getting all Users');
   try {
     const db = await connect();
-    const collection = db.collection('users'); // Update 'users' to your collection name
+    const collection = db.collection('User'); 
 
-    // Initialize query object
+    
     const query = {};
 
-    // Handle 'keywords' query parameter
+   
     const keywords = req.query.keywords;
     if (keywords) {
-      // Use $text operator to search for users containing the provided string
+     
       query.$text = { $search: keywords };
     }
 
-    // Handle 'role' query parameter
+    
     const role = req.query.role;
     if (role) {
       query.role = role;
     }
 
-    // Handle 'maxAge' and 'minAge' query parameters
+    
     const maxAge = parseInt(req.query.maxAge);
     const minAge = parseInt(req.query.minAge);
     if (maxAge) {
@@ -70,8 +70,8 @@ router.get('/list', async (req, res) =>{
       query.createdDate = { $lt: new Date(new Date() - minAge * 24 * 60 * 60 * 1000) };
     }
 
-    // Handle 'sortBy' query parameter
-    const sortBy = req.query.sortBy || 'givenName'; // Default to 'givenName'
+    
+    const sortBy = req.query.sortBy || 'givenName'; 
     let sortQuery = {};
     switch (sortBy) {
       case 'givenName':

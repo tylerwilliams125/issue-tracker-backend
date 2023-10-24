@@ -37,14 +37,78 @@ const closeBugSchema = Joi.object({
 });
 
 router.get('/list', async (req,res) => {
-  debugBug('Getting all Bugs')
-  try{
+  debugBug('Getting Bugs with Additional Search Functionality');
+
+  try {
     const db = await connect();
-    const bugs = await getBugs();
-    res.status(200).json(bugs)
-  }catch(err){
-    res.status(500).json({error: err.stack});
+    const collection = db.collection('Bug');
+    const query = {};
+
+    
+    const options = {
+      limit: parseInt(req.query.pageSize) || 5,
+      skip: (parseInt(req.query.pageNumber) - 1 || 0) * (parseInt(req.query.pageSize) || 5),
+    };
+
+    
+    if (req.query.keywords) {
+      query.$text = { $search: req.query.keywords };
+    }
+
+   
+    if (req.query.classification) {
+      query.classification = req.query.classification;
+    }
+
+   
+    if (req.query.maxAge) {
+      const maxAgeDate = new Date();
+      maxAgeDate.setDate(maxAgeDate.getDate() - parseInt(req.query.maxAge));
+      query.createdAt = { $gte: maxAgeDate };
+    }
+
+    if (req.query.minAge) {
+      const minAgeDate = new Date();
+      minAgeDate.setDate(minAgeDate.getDate() - parseInt(req.query.minAge));
+      query.createdAt = { ...query.createdAt, $lt: minAgeDate };
+    }
+
+   
+    if (req.query.closed === 'true' || req.query.closed === 'false') {
+      query.closed = req.query.closed === 'true';
+    }
+
+    
+    switch (req.query.sortBy) {
+      case 'newest':
+        options.sort = { createdAt: -1 };
+        break;
+      case 'oldest':
+        options.sort = { createdAt: 1 };
+        break;
+      case 'title':
+        options.sort = { title: 1, createdAt: -1 };
+        break;
+      case 'classification':
+        options.sort = { classification: 1, createdAt: -1 };
+        break;
+      case 'assignedTo':
+        options.sort = { assignedTo: 1, createdAt: -1 };
+        break;
+      case 'createdBy':
+        options.sort = { createdBy: 1, createdAt: -1 };
+        break;
+      default:
+        options.sort = { createdAt: -1 }; // Default sorting by newest
+        break;
+    }
+
+    const bugs = await collection.find(query, options).toArray();
+    res.status(200).json(bugs);
+  } catch (err) {
+    res.status(500).json({ error: err.stack });
   }
+});
 });
 
 router.get('/:bugId',validId, async (req,res) =>{
