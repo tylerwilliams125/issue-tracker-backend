@@ -39,117 +39,195 @@ const updateUserSchema = Joi.object({
 
 
 router.get('/list', async (req, res) =>{
-  debugUser('Getting all Users');
+  debugBug('Getting Bugs with Additional Search Functionality');
+
   try {
     const db = await connect();
-    const collection = db.collection('User'); 
-
-    
+    const collection = db.collection('Bug');
     const query = {};
 
-   
-    const keywords = req.query.keywords;
-    if (keywords) {
-     
-      query.$text = { $search: keywords };
+    // Define the options for sorting and pagination
+    const options = {
+      limit: parseInt(req.query.pageSize) || 5,
+      skip: (parseInt(req.query.pageNumber) - 1 || 0) * (parseInt(req.query.pageSize) || 5),
+    };
+
+    // Handle the "keywords" query parameter
+    if (req.query.keywords) {
+      query.$text = { $search: req.query.keywords };
     }
 
-    
-    const role = req.query.role;
-    if (role) {
-      query.role = role;
+    // Handle the "classification" query parameter
+    if (req.query.classification) {
+      query.classification = req.query.classification;
     }
 
-    
-    const maxAge = parseInt(req.query.maxAge);
-    const minAge = parseInt(req.query.minAge);
-    if (maxAge) {
-      query.createdDate = { $gte: new Date(new Date() - maxAge * 24 * 60 * 60 * 1000) };
-    }
-    if (minAge) {
-      query.createdDate = { $lt: new Date(new Date() - minAge * 24 * 60 * 60 * 1000) };
+    // Handle the "maxAge" and "minAge" query parameters
+    if (req.query.maxAge) {
+      const maxAgeDate = new Date();
+      maxAgeDate.setDate(maxAgeDate.getDate() - parseInt(req.query.maxAge));
+      query.createdAt = { $gte: maxAgeDate };
     }
 
-    
-    const sortBy = req.query.sortBy || 'givenName'; 
-    let sortQuery = {};
-    switch (sortBy) {
-      case 'givenName':
-        sortQuery = { givenName: 1, familyName: 1, createdDate: 1 };
-        break;
-      case 'familyName':
-        sortQuery = { familyName: 1, givenName: 1, createdDate: 1 };
-        break;
-      case 'role':
-        sortQuery = { role: 1, givenName: 1, familyName: 1, createdDate: 1 };
-        break;
+    if (req.query.minAge) {
+      const minAgeDate = new Date();
+      minAgeDate.setDate(minAgeDate.getDate() - parseInt(req.query.minAge));
+      query.createdAt = { ...query.createdAt, $lt: minAgeDate };
+    }
+
+    // Handle the "closed" query parameter
+    if (req.query.closed === 'true' || req.query.closed === 'false') {
+      query.closed = req.query.closed === 'true';
+    }
+
+    // Sorting logic based on "sortBy" query parameter
+    switch (req.query.sortBy) {
       case 'newest':
-        sortQuery = { createdDate: -1 };
+        options.sort = { createdAt: -1 };
         break;
       case 'oldest':
-        sortQuery = { createdDate: 1 };
+        options.sort = { createdAt: 1 };
+        break;
+      case 'title':
+        options.sort = { title: 1, createdAt: -1 };
+        break;
+      case 'classification':
+        options.sort = { classification: 1, createdAt: -1 };
+        break;
+      case 'assignedTo':
+        options.sort = { assignedTo: 1, createdAt: -1 };
+        break;
+      case 'createdBy':
+        options.sort = { createdBy: 1, createdAt: -1 };
+        break;
+      default:
+        options.sort = { createdAt: -1 }; // Default sorting by newest
         break;
     }
 
-    // Handle 'pageSize' and 'pageNumber' query parameters
-    const pageSize = parseInt(req.query.pageSize) || 5;
-    const pageNumber = parseInt(req.query.pageNumber) || 1;
-    const skip = (pageNumber - 1) * pageSize;
-
-    const users = await collection
-      .find(query)
-      .sort(sortQuery)
-      .skip(skip)
-      .limit(pageSize)
-      .toArray();
-
-    res.status(200).json(users);
+    // Perform the database query using the constructed query and options
+    const bugs = await collection.find(query, options).toArray();
+    res.status(200).json(bugs);
   } catch (err) {
     res.status(500).json({ error: err.stack });
   }
 });
 
 router.get("/:userId",validId, async (req,res) =>{
-   // Reads the userID from the URL and stores it in a variable
-   const userId = req.params.userId;
+  const userId = req.params.userId;
 
-   // Check if userId is a valid ObjectId
-   if (!isValidObjectId(userId)) {
-       return res.status(404).json({ error: `userId ${userId} is not a valid ObjectId.` });
-   }
+  if (!isValidObjectId(userId)) {
+    return res.status(404).json({ error: `userId ${userId} is not a valid ObjectId.` });
+  }
 
-   try {
-       const user = await getUserById(userId);
-       res.status(200).json(user);
-   } catch (err) {
-       res.status(500).json({ error: err.stack });
-   }
+  try {
+    const user = await getUserById(userId);
+
+    if (user) {
+      // Check if the request includes valid user authentication, e.g., username and password
+      const { username, password } = req.body; // Assuming you're using a POST request with user credentials
+      
+      if (username && password) {
+        // Validate the user's credentials
+        if (await bcrypt.compare(password, user.password)) {
+          // Authentication is successful
+
+          // Issue a new JWT token
+          const authPayload = {
+            userId: user._id, // Save user data that you will want later
+          };
+          const authSecret = config.get('auth.secret');
+          const authExpiresIn = config.get('auth.tokenExpiresIn');
+          const authToken = jwt.sign(authPayload, authSecret, { expiresIn: authExpiresIn });
+
+          // Save the JWT token in a cookie
+          const authMaxAge = parseInt(config.get('auth.cookieMaxAge'));
+          res.cookie('authToken', authToken, { maxAge: authMaxAge, httpOnly: true });
+
+          res.status(200).json({ message: 'Welcome Back!', userId: user._id, authToken });
+        } else {
+          // Authentication failed
+          res.status(401).json({ error: 'Authentication failed' });
+        }
+      } else {
+        // No user credentials provided in the request, so just return the user's information
+        res.status(200).json(user);
+      }
+    } else {
+      res.status(404).json({ error: `User with userId ${userId} not found.` });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.stack });
+  }
 });
 
 router.post('/register',validBody(newUserSchema), async (req,res) => {
     //FIXME: Register new user and send response as JSON
-    const userId = req.params.userId;
-
     try {
-        // Validate the request data against the schema
-        const { error } = newUserSchema.validate(req.body);
-
-        if (error) {
-            return res.status(400).json({ error: error.details });
-        }
-
-        // If validation passes, proceed to register the new user
-        const { email, password, fullName, givenName, familyName, role } = req.body;
-
-        const newUser = { email, password, fullName, givenName, familyName, role, createdAt: new Date() };
-        const result = await addUser(newUser);
-
-        res.status(200).json({ message: `User ${fullName} registered!` });
+      // Validate the request data against the schema
+      const { error } = newUserSchema.validate(req.body);
+  
+      if (error) {
+        return res.status(400).json({ error: error.details });
+      }
+  
+      // If validation passes, proceed to register the new user
+      const { email, password, fullName, givenName, familyName } = req.body;
+  
+      // Hash the password using bcrypt
+      const hashedPassword = await bcrypt.hash(password, 10);
+  
+      // Generate a new user ID and set the created date
+      const userId = new ObjectId();
+      const createdAt = new Date();
+  
+      // Define the initial user role as 'developer'
+      const role = ['developer'];
+  
+      // Create the user document
+      const newUser = {
+        _id: userId,
+        email,
+        password: hashedPassword, // Store the hashed password
+        fullName,
+        givenName,
+        familyName,
+        createdAt,
+        role,
+      };
+  
+      // Add the user to the user collection (You'll need to implement the 'addUser' function)
+      await addUser(newUser);
+  
+      // Record the registration in the 'edits' collection
+      const editRecord = {
+        timestamp: new Date(),
+        col: 'user',
+        op: 'insert',
+        target: { userId },
+        update: newUser,
+      };
+  
+      // Add the edit record to the 'edits' collection (You'll need to implement the function for this)
+      await addEditRecord(editRecord);
+  
+      // Issue a JWT token for the newly registered user
+      const authPayload = {
+        userId, // Save user data that you will want later
+      };
+      const authSecret = config.get('auth.secret');
+      const authExpiresIn = config.get('auth.tokenExpiresIn');
+      const authToken = jwt.sign(authPayload, authSecret, { expiresIn: authExpiresIn });
+  
+      // Save the JWT token in a cookie
+      const authMaxAge = parseInt(config.get('auth.cookieMaxAge'));
+      res.cookie('authToken', authToken, { maxAge: authMaxAge, httpOnly: true });
+  
+      res.status(200).json({ message: 'User Registered!', userId, authToken });
     } catch (err) {
-        console.error('Database error:', err);
-        res.status(500).json({ error: 'Internal server error' });
+      console.error('Database error:', err);
+      res.status(500).json({ error: 'Internal server error' });
     }
-
 });
 
 
@@ -157,27 +235,44 @@ router.post('/login',validBody(loginUserSchema), async (req,res) =>{
   //FIXME: check user's email and password and send response as JSON
   const user = req.body;
 
-    // Validate the request data against the schema
-    const { error } = loginUserSchema.validate(user);
+  // Validate the request data against the schema
+  const { error } = loginUserSchema.validate(user);
 
-    if (error) {
-        return res.status(400).json({ error: error.details });
+  if (error) {
+    return res.status(400).json({ error: error.details });
+  }
+
+  try {
+    const resultUser = await loginUser(user);
+
+    if (resultUser) {
+      // Check if the provided password matches the stored password (make sure to hash it with bcrypt)
+      const passwordMatch = await bcrypt.compare(user.password, resultUser.password);
+
+      if (passwordMatch) {
+        // Generate a JSON Web Token (JWT)
+        const authPayload = {
+          userId: resultUser.userId, // Replace with the actual user identifier
+        };
+        const authSecret = config.get('auth.secret');
+        const authExpiresIn = config.get('auth.tokenExpiresIn');
+        const authToken = jwt.sign(authPayload, authSecret, { expiresIn: authExpiresIn });
+
+        // Store the JWT token in a cookie
+        const authMaxAge = parseInt(config.get('auth.cookieMaxAge'));
+        res.cookie('authToken', authToken, { maxAge: authMaxAge, httpOnly: true });
+
+        res.status(200).json({ message: `Welcome ${resultUser.fullName}` });
+      } else {
+        res.status(401).json({ error: 'Email or password incorrect' });
+      }
+    } else {
+      res.status(401).json({ error: 'Email or password incorrect' });
     }
-
-    try {
-        const resultUser = await loginUser(user);
-        debugUser(resultUser);
-
-        if (resultUser && user.password === resultUser.password) {
-            res.status(200).json(`Welcome ${resultUser.fullName}`);
-        } else {
-            res.status(401).json(`email or password incorrect`);
-        }
-    } catch (err) {
-        console.error('Database error:', err);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-
+  } catch (err) {
+    console.error('Database error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 
 });
 
