@@ -109,7 +109,6 @@ router.get('/list', async (req,res) => {
     res.status(500).json({ error: err.stack });
   }
 });
-});
 
 router.get('/:bugId',validId, async (req,res) =>{
     const bugId = req.params.bugId;
@@ -298,5 +297,7 @@ router.put("/:bugId/close",validBody(closeBugSchema), (req,res) =>{
     }
 
 });
+
+
 
 export {router as BugRouter};

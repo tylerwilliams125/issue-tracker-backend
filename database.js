@@ -120,12 +120,80 @@ async function assignBug(id, assignedBug){
   return result;
 }
 
+async function commentNewBug(bugId, comment, fullName){
+  const db = await connect();
+  const collection = db.collection("Bug");
+  const bug = await collection.findOne({_id: new ObjectId(bugId)});
 
+  if(!bug){
+    return {status : 404, json: {error: `Bug ${bugId} not found`}};
+  }
+
+  if (typeof comment !== 'string' || typeof fullName !== 'string') {
+    return {status : 400, json: {error: `invalid comment or fullName`}};
+  }
+
+  const currentDate = new Date();
+  const commentObjectId = new ObjectId(); // Generate a new ObjectId for the comment
+  const randomUserId = new ObjectId(); // generate a random ObjectId for the userId
+
+  const newComment = {
+    _id: commentObjectId,
+    comment,
+    fullName,
+    createdAt: currentDate.toISOString(),
+    userId: randomUserId
+  };
+  
+  await collection.updateOne({_id: new ObjectId(bugId)}, {$push: {comments: newComment}}, {$set: {lastUpdated: currentDate.toISOString()} });
+
+  return {status : 200, json: {message: `Comment added to bug ${bugId}`}}
+}
+
+async function commentBugList(bugId){
+  const db = await connect();
+  const collection = db.collection("Bug");
+  try{
+    const bug = await collection.findOne({_id: new ObjectId(bugId)});
+
+    if(!bug){
+      return {success : false, error: `Bug ${bugId} not found`};
+    }
+
+    return {success : true, comments: bug.comments};
+  }catch(err){
+    return {success : false, error: err.stack};
+}
+}
+
+async function commentBugId(bugId, commentId){
+  const db = await connect();
+  const collection = db.collection("Bug");
+
+  try{
+  // Find the bug with the given bugId
+  const bug = await collection.findOne({_id: new ObjectId(bugId)});
+
+  if (bug) {
+    //find the specific comment with the given commentId
+    const commment = bug.comments.find((comment) => comment._id.toString() === commentId);
+
+    return comment; //return the comment object
+
+  }else{
+    return null;
+  }
+
+  }catch(err){
+    throw err;
+  }
+
+}
 
 
 
 // export functions
-export {newId,connect,ping,getUsers,getUserById,addUser,loginUser,updateUser,deleteUser,getBugs,getBugById,addBug,updateBug,classifyBug,assignBug};
+export {newId,connect,ping,getUsers,getUserById,addUser,loginUser,updateUser,deleteUser,getBugs,getBugById,addBug,updateBug,classifyBug,assignBug,commentNewBug,commentBugList};
 
 // test the database connection
 ping();

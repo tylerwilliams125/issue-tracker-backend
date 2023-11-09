@@ -16,6 +16,7 @@ router.use(express.urlencoded({extended:false}));
 
 const newUserSchema = Joi.object({
   email: Joi.string().email().required(),
+
   password: Joi.string().required(),
   givenName: Joi.string().required(),
   familyName: Joi.string().required(),
@@ -35,6 +36,10 @@ const updateUserSchema = Joi.object({
   role: Joi.string().valid('role1', 'role2', 'role3')
 });
 
+const commentSchema = Joi.object({
+  fullName: Joi.string().required(),
+ comment: Joi.string().required(),
+});
 
 
 
