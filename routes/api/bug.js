@@ -2,7 +2,7 @@ import express from 'express'
 const router = express.Router();
 import {nanoid} from 'nanoid';
 import Joi from 'joi';
-import{connect,getBugs,getBugById,addBug,updateBug,classifyBug,assignBug} from '../../database.js';
+import{connect,getBugs,getBugById,addBug,updateBug,classifyBug,assignBug,commentNewBug,commentBugList,commentBugId, testCaseNewBug, findTestCasesByBugId, findSpecificTestCaseByBugId, deleteTestCase, updateTestCaseByBugId } from '../../database.js';
 import debug from 'debug';
 import { validBody } from '../../middleWare/validBody.js';
 import { validId } from '../../middleWare/validId.js';
@@ -34,6 +34,15 @@ const assignBugSchema = Joi.object({
 
 const closeBugSchema = Joi.object({
   closed: Joi.boolean().required(),
+});
+
+const bugCommentSchema = Joi.object({
+  fullName: Joi.string().required(),
+  comment: Joi.string().required()
+});
+
+const bugTestCaseSchema = Joi.object({
+  version: Joi.string().min(1).max(50).required(),
 });
 
 router.get('/list', async (req,res) => {
@@ -296,6 +305,94 @@ router.put("/:bugId/close",validBody(closeBugSchema), (req,res) =>{
         res.status(500).json({ error: 'Internal server error' });
     }
 
+});
+
+router.post('/:bugId/comment/new',validId('bugId'),validBody(bugCommentSchema), async (req,res) =>{
+
+  const { bugId } = req.params;
+  const { fullName, comment } = req.body;
+
+  try{
+    const result = await commentNewBug(bugId, fullName, comment);
+    res.status(result.status).json(result.json);
+  }catch(err){
+    console.error(error)
+    res.status(500).json({error: 'Internal server error'});
+  }
+
+});
+
+router.get('/:bugId/comment/list',validId('bugId'),async (req,res) =>{
+  const {bugId}  = req.params;
+
+  const result = await commentBugList(bugId);
+
+  if(result.success){
+    res.status(200).json(result.comments);
+  }else{
+    res.status(result.status).json(result.json);
+  }
+
+});
+
+router.get('/:bugId/comment/:commentId',validId('bugId'),validId('commentId'), async (req,res) =>{
+  const { bugId, commentId } = req.params;
+
+  try{
+    const comment = await commentBugId(bugId, commentId);
+
+    if(comment){
+      res.json(comment);
+  }else {
+    res.status(404).json({error: `Comment ${commentId} not found`});
+  }
+  }catch(err){
+    console.error(err);
+    res.status(500).json({error: 'Internal server error'});
+  }
+});
+
+router.put ('/:bugId/testCase/new',validId('bugId'),validBody(bugTestCaseSchema), async (req,res) =>{
+  const { bugId } = req.params;
+  const { version } = req.body;
+
+  try{
+    const result = await testCaseNewBug(bugId, version);
+    res.status(result.status).json(result.json);
+  }catch(err){
+    console.error(err);
+    res.status(500).json({error: 'Internal server error'});
+  }
+});
+
+router.get('/:bugId/testCase/list',validId('bugId'), async (req,res) =>{
+  const { bugId } = req.params;
+
+  try{
+   const testCases = await findTestCasesByBugId(bugId);
+   res.json(testCases);
+  }catch(error){
+    console.error(err);
+    res.status(500).json({error: 'Internal server error'});
+  }
+
+});
+
+router.get('/:bugId/testCase/:testCaseId',validId('bugId'),validId('testCaseId'), async (req,res) =>{
+  const { bugId, testCaseId } = req.params;
+
+  try{
+    const testCase = await findSpecificTestCaseByBugId(bugId, testCaseId);
+
+    if(testCase){
+      res.json(testCase);
+    }else{
+      res.status(404).json({error: `Test case ${testCaseId} not found`});
+    }
+  }catch(err){
+    console.error(err);
+    res.status(500).json({error: 'Internal server error'});
+  }
 });
 
 

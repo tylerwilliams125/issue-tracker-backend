@@ -4,6 +4,7 @@ dotenv.config();
 
 import { MongoClient, ObjectId } from "mongodb";
 import debug from 'debug';
+
 const debugDb = debug('app:database');
 
 
@@ -190,15 +191,195 @@ async function commentBugId(bugId, commentId){
 
 }
 
-async function testCaseNewBug(bugId, userId, version, req){
-  try{
-    
+  async function testCaseNewBug(bugId, userId, version, req){
+    try{
+      const db = await connect();
+      const collection = db.collection("Bug");
+
+      const bug = await collection.findOne({_id: new ObjectId(bugId)});
+
+      if (!bug) {
+        return {status : 404, json: {error: `Bug ${bugId} not found`}};
+      }
+      const createdBy = new ObjectId(req.auth?.userId);
+
+
+      const newTestCase = {
+        testId: new ObjectId(),
+        userId: createdBy,
+        passed: true,
+        createdOn: new Date(),
+        version: version,
+        appliedOnDate: new Date(),
+      };
+
+      bug.testCases.push(newTestCase);
+
+      await collection.updateOne({_id: new ObjectId(bugId)}, {$set: {testCases: bug.testCases}});
+      const editsCollection = db.collection('Edits');
+      const changeRecord = {
+        timestamp: new Date(),
+        col: 'testCases',
+        op: 'create',
+        target: {bugId: new ObjectId(bugId)},
+        update: {testCases: bug.testCases},
+        auth: req.auth};
+      
+      await editsCollection.insertOne(changeRecord);
+      return {status : 200, json: {message: `Test Case added to bug ${bugId}`}}
+
+    }catch(err){
+      return {status : 500, json: {error: err.stack}};
+    }
+}
+
+async function findTestCasesByBugId(bugId){
+  const db = await connect();
+  const collection = db.collection("Bug");
+  const bug = await collection.findOne({_id: new ObjectId(bugId)});
+
+  if (bug) {
+    return bug.testCases;
+  }else{
+    return null;
+  }
+}
+
+async function findSpecificTestCaseByBugId(bugId, testCaseId){
+  const db = await connect();
+  const collection = db.collection("Bug");
+  const bug = await collection.findOne({_id: new ObjectId(bugId)});
+
+  if (bug) {
+    const specificTestCase = bug.testCases.find((testCase) => testCase.testId.toString() === testCaseId);
+    return specificTestCase;
+  }else{
+    return null;
   }
 }
 
 
+async function deleteTestCase(bugId, testCaseId, auth){
+  const db = await connect();
+  const collection = db.collection("Bug");
+  const editsCollection = db.collection('Edits');
+
+  try{
+    console.log(`Deleting test case from bug ${bugId} and test case ${testCaseId}`);
+
+    const filter = {
+      _id: new ObjectId(bugId),
+      'testCases.testId': new ObjectId(testCaseId)
+    };
+
+    console.log('Filter:', filter);
+    
+    const update = {
+      $pull: {
+        testCases: {
+          testId: new ObjectId(testCaseId)
+        }
+      }
+    };
+
+    console.log('Update:', update);
+
+    const result = await collection.updateOne(filter, update);
+
+    console.log('Result:', result);
+    
+    if (result.modifiedCount === 1) {
+      console.log('Test case deleted');
+
+
+      const editRecord = {
+        timestamp : new Date(),
+        col: 'bug',
+        op: 'delete',
+        target: {bugId: new ObjectId(bugId)},
+        update: updatedFields, 
+        auth: req.auth 
+      };
+
+      const editResult = await editsCollection.insertOne(editRecord);
+
+      console.log('Edit result added to collection:', editResult);
+      return {status : 204, json: {message: `Test Case deleted from bug ${bugId}`}}
+    }else{
+      console.log('Test case not found');
+      return {status : 404, json: {error: `Test case ${testCaseId} not found`}}
+    }
+
+    
+
+  }catch(err){
+    console.error(err.stack);
+    return {status : 500, message: 'Internal Server Error'};
+  }
+
+}
+
+
+async function updateTestCaseByBugId(bugId, testCaseId, version, updatedTestCase, auth){
+  const db = await connect();
+  const collection = db.collection("Bug");
+  const editsCollection = db.collection('Edits'); 
+
+  try{
+
+    const bug = await collection.findOne({_id: new ObjectId(bugId)});
+    if (!bug) {
+      return {status : 404, json: {error: `Bug ${bugId} not found`}};
+    }
+
+    const testCaseIndex = bug.testCases.findIndex((testCase) => testCase.testId.toString() === testCaseId);
+    if (testCaseIndex === -1) {
+      return {status : 404, json: {error: `Test case ${testCaseId} not found`}};
+    }
+
+    bug.testCases[testCaseIndex].lastUpdatedOn = new Date();
+    bug.testCases[testCaseIndex].lastUpdatedBy = auth;
+
+    for (const key in fieldsToUpdate){
+      if (fieldsToUpdate.hasOwnProperty(key)) {
+        bug.testCases[testCaseIndex][key] = fieldsToUpdate[key];
+      }
+    }
+
+    await collection.updateOne({_id: new ObjectId(bugId)}, {$set: {testCases: bug.testCases}});
+
+    const editRecord = {
+      timestamp : new Date(),
+      col: 'bug',
+      op: 'update',
+      target: {bugId},
+      update: fieldsToUpdate,
+      auth: auth 
+    };
+
+    await editsCollection.insertOne(editRecord);
+
+    const updatedBug = bug;
+    const authToken = issueAuthTokenBug(updatedBug);
+
+    return {success: true, message: 'Test case fields updated successfully', authToken};
+  }catch(error){
+    console.error(error);
+    return {success: false, message: 'Internal Server Error'};  
+
+  }
+
+}
+
+
+async function findRoleByName(name){
+  const db = await connect();
+  const collection = db.collection("Role");
+  const role = await collection.findOne({name: name});
+  return role;
+}
 // export functions
-export {newId,connect,ping,getUsers,getUserById,addUser,loginUser,updateUser,deleteUser,getBugs,getBugById,addBug,updateBug,classifyBug,assignBug,commentNewBug,commentBugList,commentBugId};
+export {newId,connect,ping,getUsers,getUserById,addUser,loginUser,updateUser,deleteUser,getBugs,getBugById,addBug,updateBug,classifyBug,assignBug,commentNewBug,commentBugList,commentBugId, testCaseNewBug, findTestCasesByBugId, findSpecificTestCaseByBugId, deleteTestCase, updateTestCaseByBugId,findRoleByName};
 
 // test the database connection
 ping();
