@@ -190,10 +190,15 @@ async function commentBugId(bugId, commentId){
 
 }
 
+async function testCaseNewBug(bugId, userId, version, req){
+  try{
+    
+  }
+}
 
 
 // export functions
-export {newId,connect,ping,getUsers,getUserById,addUser,loginUser,updateUser,deleteUser,getBugs,getBugById,addBug,updateBug,classifyBug,assignBug,commentNewBug,commentBugList};
+export {newId,connect,ping,getUsers,getUserById,addUser,loginUser,updateUser,deleteUser,getBugs,getBugById,addBug,updateBug,classifyBug,assignBug,commentNewBug,commentBugList,commentBugId};
 
 // test the database connection
 ping();
