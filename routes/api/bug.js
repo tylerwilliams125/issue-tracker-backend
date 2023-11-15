@@ -352,7 +352,7 @@ router.get('/:bugId/comment/:commentId',validId('bugId'),validId('commentId'), a
   }
 });
 
-router.put ('/:bugId/testCase/new',validId('bugId'),validBody(bugTestCaseSchema), async (req,res) =>{
+router.put ('/:bugId/test/new',validId('bugId'),validBody(bugTestCaseSchema), async (req,res) =>{
   const { bugId } = req.params;
   const { version } = req.body;
 
@@ -365,7 +365,7 @@ router.put ('/:bugId/testCase/new',validId('bugId'),validBody(bugTestCaseSchema)
   }
 });
 
-router.get('/:bugId/testCase/list',validId('bugId'), async (req,res) =>{
+router.get('/:bugId/test/list',validId('bugId'), async (req,res) =>{
   const { bugId } = req.params;
 
   try{
@@ -378,7 +378,7 @@ router.get('/:bugId/testCase/list',validId('bugId'), async (req,res) =>{
 
 });
 
-router.get('/:bugId/testCase/:testCaseId',validId('bugId'),validId('testCaseId'), async (req,res) =>{
+router.get('/:bugId/test/:testCaseId',validId('bugId'),validId('testCaseId'), async (req,res) =>{
   const { bugId, testCaseId } = req.params;
 
   try{
@@ -393,7 +393,7 @@ router.get('/:bugId/testCase/:testCaseId',validId('bugId'),validId('testCaseId')
     console.error(err);
     res.status(500).json({error: 'Internal server error'});
   }
-});
+});  
 
 
 
