@@ -395,6 +395,20 @@ router.get('/:bugId/test/:testCaseId',validId('bugId'),validId('testCaseId'), as
   }
 });  
 
+router.delete('/:bugId/test/:testCaseId',validId('bugId'),validId('testCaseId'), async (req,res) =>{
+
+    const { bugId, testCaseId } = req.params;
+    const updatedFields = {};
+
+    try{
+      const result = await deleteTestCase(bugId, testCaseId, updatedFields, req);
+      
+      if (result.status === 204) {
+        const authToken = issueAuthToken(bug);
+      }
+    }catch(err){}
+
+});
 
 
 export {router as BugRouter};
