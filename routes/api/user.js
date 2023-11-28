@@ -36,19 +36,16 @@ const updateUserSchema = Joi.object({
   role: Joi.string().valid('role1', 'role2', 'role3')
 });
 
-const commentSchema = Joi.object({
-  fullName: Joi.string().required(),
- comment: Joi.string().required(),
-});
+
 
 
 
 router.get('/list', async (req, res) =>{
-  debugBug('Getting Bugs with Additional Search Functionality');
+  
 
   try {
     const db = await connect();
-    const collection = db.collection('Bug');
+    const collection = db.collection('User');
     const query = {};
 
     // Define the options for sorting and pagination
@@ -111,14 +108,14 @@ router.get('/list', async (req, res) =>{
     }
 
     // Perform the database query using the constructed query and options
-    const bugs = await collection.find(query, options).toArray();
-    res.status(200).json(bugs);
+    const users = await collection.find(query, options).toArray();
+    res.status(200).json(users);
   } catch (err) {
     res.status(500).json({ error: err.stack });
   }
 });
 
-router.get("/:userId",validId, async (req,res) =>{
+router.get("/:userId",validId('userId'), async (req,res) =>{
   const userId = req.params.userId;
 
   if (!isValidObjectId(userId)) {

@@ -251,7 +251,7 @@ async function findSpecificTestCaseByBugId(bugId, testCaseId){
   const bug = await collection.findOne({_id: new ObjectId(bugId)});
 
   if (bug) {
-    const specificTestCase = bug.testCases.find((testCase) => testCase.testId.toString() === testCaseId);
+    const specificTestCase = bug.testCases.find((testCases) => testCases.testId.toString() === testCaseId);
     return specificTestCase;
   }else{
     return null;

@@ -45,6 +45,11 @@ const bugTestCaseSchema = Joi.object({
   version: Joi.string().min(1).max(50).required(),
 });
 
+const commentSchema = Joi.object({
+  fullName: Joi.string().required(),
+ comment: Joi.string().required(),
+});
+
 router.get('/list', async (req,res) => {
   debugBug('Getting Bugs with Additional Search Functionality');
 
@@ -119,23 +124,22 @@ router.get('/list', async (req,res) => {
   }
 });
 
-router.get('/:bugId',validId, async (req,res) =>{
-    const bugId = req.params.bugId;
-    //FIXME: get bug from bugsArray and send response as JSON
-    if (!isValidObjectId(bugId)) {
-      return res.status(404).json({ error: `bugId ${bugId} is not a valid ObjectId.` });
-  }
+router.get('/:bugId',validId('bugId'), async (req,res) =>{
+  
+  const bugId = req.params.bugId;
+  debugBug('Getting Bug by Id')
 
   try {
-      const bug = await getBugById(bugId);
-      
-      if (!bug) {
-          res.status(404).json({ message: `Bug ${bugId} not found` });
-      } else {
-          res.status(200).json(bug);
-      }
+   
+    const bug = await getBugById(bugId); 
+
+    if (!bug) {
+      res.status(404).json({ message: `Bug ${bugId} not found` }); 
+    } else {
+      res.status(200).json(bug);
+    }
   } catch (err) {
-      res.status(500).json({ error: err.stack });
+    res.status(500).json({ error: err.stack });
   }
 });
 
@@ -405,9 +409,37 @@ router.delete('/:bugId/test/:testCaseId',validId('bugId'),validId('testCaseId'),
       
       if (result.status === 204) {
         const authToken = issueAuthToken(bug);
+      }else if(result.status === 404){
+        res.status(result.status).json(result.json);
+      }else{
+        res.status(500).send('Internal server error');
       }
-    }catch(err){}
+    }catch(error){
+      console.error(error);
+      res.status(500).json({error: 'Internal server error'});
+    }
 
+});
+
+router.put('/:bugId/test/:testCaseId',validId('bugId'),validId('testCaseId'),validBody(bugTestCaseSchema), async (req,res) =>{
+  
+  try{
+      const { bugId, testCaseId } = req.params;
+      const { version, ...updatedFields } = req.body;
+
+      const auth = req.bug;
+
+      const updateResult = await updateTestCaseByBugId(bugId, testCaseId, version, updatedFields, auth);
+      
+      if(updateResult.success){
+        res.status(200).json({message:'Test case fields updated successfully',  authToken: updateResult.authToken});
+      }else{
+        res.status(404).json({error: updateResult.message});
+      }
+    }catch(err){
+    console.error(err);
+    res.status(500).json({error: 'Internal server error'});
+  }
 });
 
 
