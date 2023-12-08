@@ -3,9 +3,13 @@ import debug from 'debug';
 import Joi from 'joi';
 import { validBody } from '../../middleWare/validBody.js';
 import { validId } from '../../middleWare/validId.js';
-
+import { ObjectId } from 'mongodb';
+import bcrypt from 'bcrypt';
+import { config } from 'dotenv';
 import {nanoid} from 'nanoid';
-import{connect, getUsers,getUserById,addUser,loginUser,updateUser,deleteUser} from '../../database.js';
+import jwt from 'jsonwebtoken';
+import{connect, getUsers,getUserById,addUser,loginUser,updateUser,deleteUser, findRoleByName, newId,saveEdit} from '../../database.js';
+import { isLoggedIn, fetchRoles, mergePermissions, hasPermission } from '@merlin4/express-auth';
 
 
 const debugUser = debug('app:UserRouter');
@@ -13,6 +17,34 @@ const router = express.Router();
 router.use(express.urlencoded({extended:false}));
 //FIXME: use this array to store user data in for now
 // we will replace this with a database in a later assignment
+const authSecret = process.env.AUTH_SECRET;
+const authExpiresIn = process.env.AUTH_EXPIRES_IN;
+const authMaxAge = parseInt(process.env.AUTH_COOKIE_MAX_AGE);
+async function issueAuthToken(user){
+  const payload = {_id: user._id, email: user.email, role: user.role};
+  const secret = process.env.JWT_SECRET;
+  const options = {expiresIn:'1h'};
+
+
+  const roles = await fetchRoles(user, role => findRoleByName(role));
+
+  // roles.forEach(role => {
+  //     debugUser(`The users role is ${(role.name)} and has the following permissions: ${JSON.stringify(role.permissions)}`);
+  // });
+
+  const permissions = mergePermissions(user, roles);
+  payload.permissions = permissions;
+
+  //debugUser(`The users permissions are ${permissions}`);
+
+  const authToken = jwt.sign(payload, secret, options);
+  return authToken;
+}
+function issueAuthCookie(res, authToken){
+  const cookieOptions = {httpOnly:true,maxAge:1000*60*60, sameSite:'none', secure:true};
+  res.cookie('authToken',authToken,cookieOptions);
+}
+
 
 const newUserSchema = Joi.object({
   email: Joi.string().email().required(),
@@ -20,7 +52,7 @@ const newUserSchema = Joi.object({
   password: Joi.string().required(),
   givenName: Joi.string().required(),
   familyName: Joi.string().required(),
-  role: Joi.string().valid('role1', 'role2', 'role3').required(),
+  fullName: Joi.string().required(),
 });
 
 const loginUserSchema = Joi.object({
@@ -33,14 +65,14 @@ const updateUserSchema = Joi.object({
   fullName: Joi.string(),
   givenName: Joi.string(),
   familyName: Joi.string(),
-  role: Joi.string().valid('role1', 'role2', 'role3')
+  role: Joi.string().valid(`developer`, `business analyst`, `quality analyst`, `product manager`, `technical manager`),
 });
 
 
 
 
 
-router.get('/list', async (req, res) =>{
+router.get('/list',isLoggedIn(), async (req, res) =>{
   
 
   try {
@@ -115,7 +147,7 @@ router.get('/list', async (req, res) =>{
   }
 });
 
-router.get("/:userId",validId('userId'), async (req,res) =>{
+router.get("/:userId", validId('userId'), async (req, res) => {
   const userId = req.params.userId;
 
   if (!isValidObjectId(userId)) {
@@ -126,34 +158,27 @@ router.get("/:userId",validId('userId'), async (req,res) =>{
     const user = await getUserById(userId);
 
     if (user) {
-      // Check if the request includes valid user authentication, e.g., username and password
-      const { username, password } = req.body; // Assuming you're using a POST request with user credentials
-      
-      if (username && password) {
-        // Validate the user's credentials
-        if (await bcrypt.compare(password, user.password)) {
-          // Authentication is successful
+      const { username, password } = req.body;
 
-          // Issue a new JWT token
-          const authPayload = {
-            userId: user._id, // Save user data that you will want later
-          };
-          const authSecret = config.get('auth.secret');
-          const authExpiresIn = config.get('auth.tokenExpiresIn');
-          const authToken = jwt.sign(authPayload, authSecret, { expiresIn: authExpiresIn });
+      if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password are required.' });
+      }
 
-          // Save the JWT token in a cookie
-          const authMaxAge = parseInt(config.get('auth.cookieMaxAge'));
-          res.cookie('authToken', authToken, { maxAge: authMaxAge, httpOnly: true });
+      // Validate the user's credentials
+      if (await bcrypt.compare(password, user.password)) {
+        const authPayload = {
+          userId: user._id,
+        };
+        const authSecret = config.get('auth.secret');
+        const authExpiresIn = config.get('auth.tokenExpiresIn');
+        const authToken = jwt.sign(authPayload, authSecret, { expiresIn: authExpiresIn });
 
-          res.status(200).json({ message: 'Welcome Back!', userId: user._id, authToken });
-        } else {
-          // Authentication failed
-          res.status(401).json({ error: 'Authentication failed' });
-        }
+        const authMaxAge = parseInt(config.get('auth.cookieMaxAge'));
+        res.cookie('authToken', authToken, { maxAge: authMaxAge, httpOnly: true });
+
+        res.status(200).json({ message: 'Welcome Back!', userId: user._id, authToken });
       } else {
-        // No user credentials provided in the request, so just return the user's information
-        res.status(200).json(user);
+        res.status(401).json({ error: 'Authentication failed' });
       }
     } else {
       res.status(404).json({ error: `User with userId ${userId} not found.` });
@@ -163,119 +188,51 @@ router.get("/:userId",validId('userId'), async (req,res) =>{
   }
 });
 
-router.post('/register',validBody(newUserSchema), async (req,res) => {
-    //FIXME: Register new user and send response as JSON
-    try {
-      // Validate the request data against the schema
-      const { error } = newUserSchema.validate(req.body);
-  
-      if (error) {
-        return res.status(400).json({ error: error.details });
-      }
-  
-      // If validation passes, proceed to register the new user
-      const { email, password, fullName, givenName, familyName } = req.body;
-  
-      // Hash the password using bcrypt
-      const hashedPassword = await bcrypt.hash(password, 10);
-  
-      // Generate a new user ID and set the created date
-      const userId = new ObjectId();
-      const createdAt = new Date();
-  
-      // Define the initial user role as 'developer'
-      const role = ['developer'];
-  
-      // Create the user document
-      const newUser = {
-        _id: userId,
-        email,
-        password: hashedPassword, // Store the hashed password
-        fullName,
-        givenName,
-        familyName,
-        createdAt,
-        role,
-      };
-  
-      // Add the user to the user collection (You'll need to implement the 'addUser' function)
-      await addUser(newUser);
-  
-      // Record the registration in the 'edits' collection
-      const editRecord = {
-        timestamp: new Date(),
-        col: 'user',
-        op: 'insert',
-        target: { userId },
-        update: newUser,
-      };
-  
-      // Add the edit record to the 'edits' collection (You'll need to implement the function for this)
-      await addEditRecord(editRecord);
-  
-      // Issue a JWT token for the newly registered user
-      const authPayload = {
-        userId, // Save user data that you will want later
-      };
-      const authSecret = config.get('auth.secret');
-      const authExpiresIn = config.get('auth.tokenExpiresIn');
-      const authToken = jwt.sign(authPayload, authSecret, { expiresIn: authExpiresIn });
-  
-      // Save the JWT token in a cookie
-      const authMaxAge = parseInt(config.get('auth.cookieMaxAge'));
-      res.cookie('authToken', authToken, { maxAge: authMaxAge, httpOnly: true });
-  
-      res.status(200).json({ message: 'User Registered!', userId, authToken });
-    } catch (err) {
-      console.error('Database error:', err);
-      res.status(500).json({ error: 'Internal server error' });
+router.post('/register', validBody(newUserSchema), async (req, res) => {
+  const newUser = 
+    {
+        _id: newId(),
+        ...req.body,
+        createdDate: new Date(),
+    }
+    
+    newUser.password = await bcrypt.hash(newUser.password, 10);
+    try{
+        const result = await addUser(newUser);
+       if(result.acknowledged==true){
+            //Ready to create the cookie and JWT Token
+            const authToken = await issueAuthToken(newUser);
+            issueAuthCookie(res, authToken);
+
+            res.status(200).json({
+                message: `New user ${newUser.fullName} added`,
+                fullName: newUser.fullName,
+                role: newUser.role,
+            });
+       }
+    }catch(err){
+        res.status(500).json({error: err.stack});
     }
 });
 
-
-router.post('/login',validBody(loginUserSchema), async (req,res) =>{
-  //FIXME: check user's email and password and send response as JSON
+router.post('/login', validBody(loginUserSchema), async (req, res) => {
   const user = req.body;
 
-  // Validate the request data against the schema
-  const { error } = loginUserSchema.validate(user);
-
-  if (error) {
-    return res.status(400).json({ error: error.details });
+  const resultUser = await loginUser(user);
+  debugUser(resultUser);
+  if(resultUser && await bcrypt.compare(user.password, resultUser.password)){
+      const authToken = await issueAuthToken(resultUser);
+      issueAuthCookie(res, authToken);
+      res.status(200).json({
+          message:`Welcome ${resultUser.fullName}`,
+          authToken:authToken,
+          email:resultUser.email,
+          fullName:resultUser.fullName,
+          role:resultUser.role,
+      } );
+  }else{
+      res.status(401).json(`email or password incorrect`);
   }
-
-  try {
-    const resultUser = await loginUser(user);
-
-    if (resultUser) {
-      // Check if the provided password matches the stored password (make sure to hash it with bcrypt)
-      const passwordMatch = await bcrypt.compare(user.password, resultUser.password);
-
-      if (passwordMatch) {
-        // Generate a JSON Web Token (JWT)
-        const authPayload = {
-          userId: resultUser.userId, // Replace with the actual user identifier
-        };
-        const authSecret = config.get('auth.secret');
-        const authExpiresIn = config.get('auth.tokenExpiresIn');
-        const authToken = jwt.sign(authPayload, authSecret, { expiresIn: authExpiresIn });
-
-        // Store the JWT token in a cookie
-        const authMaxAge = parseInt(config.get('auth.cookieMaxAge'));
-        res.cookie('authToken', authToken, { maxAge: authMaxAge, httpOnly: true });
-
-        res.status(200).json({ message: `Welcome ${resultUser.fullName}` });
-      } else {
-        res.status(401).json({ error: 'Email or password incorrect' });
-      }
-    } else {
-      res.status(401).json({ error: 'Email or password incorrect' });
-    }
-  } catch (err) {
-    console.error('Database error:', err);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-
 });
 
 router.put('/:userId',validBody(updateUserSchema), async (req,res) => {
@@ -334,3 +291,15 @@ router.delete('/:userId', async (req,res) =>{
 });
 
 export {router as UserRouter};
+
+
+// const newUser = {
+//   _id: userId,
+//   email,
+//   password: hashedPassword,
+//   fullName,
+//   givenName,
+//   familyName,
+//   createdAt,
+//   role,
+// };

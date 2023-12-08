@@ -311,20 +311,19 @@ router.put("/:bugId/close",validBody(closeBugSchema), (req,res) =>{
 
 });
 
-router.post('/:bugId/comment/new',validId('bugId'),validBody(bugCommentSchema), async (req,res) =>{
-
+router.post('/:bugId/comment/new', validId('bugId'), validBody(bugCommentSchema), async (req, res) => {
   const { bugId } = req.params;
   const { fullName, comment } = req.body;
 
-  try{
+  try {
     const result = await commentNewBug(bugId, fullName, comment);
     res.status(result.status).json(result.json);
-  }catch(err){
-    console.error(error)
-    res.status(500).json({error: 'Internal server error'});
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
   }
-
 });
+
 
 router.get('/:bugId/comment/list',validId('bugId'),async (req,res) =>{
   const {bugId}  = req.params;

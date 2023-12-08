@@ -54,6 +54,7 @@ async function getUserById(id){
 
 async function addUser(user){
   const db = await connect();
+  user.role = ['developer'];
   const result = await db.collection("User").insertOne(user);
   //debugDatabase(result.insertId)
   return result;
@@ -121,34 +122,45 @@ async function assignBug(id, assignedBug){
   return result;
 }
 
-async function commentNewBug(bugId, comment, fullName){
+async function commentNewBug(bugId, fullName, comment) {
   const db = await connect();
-  const collection = db.collection("Bug");
-  const bug = await collection.findOne({_id: new ObjectId(bugId)});
 
-  if(!bug){
-    return {status : 404, json: {error: `Bug ${bugId} not found`}};
+  try {
+    const collection = db.collection("Bug");
+
+    // Use findOneAndUpdate to atomically update the document
+    const currentDate = new Date();
+    const commentObjectId = new ObjectId();
+    const randomUserId = new ObjectId();
+
+    const newComment = {
+      _id: commentObjectId,
+      comment,
+      fullName,
+      createdAt: currentDate.toISOString(),
+      userId: randomUserId
+    };
+
+    const result = await collection.findOneAndUpdate(
+      { _id: new ObjectId(bugId) },
+      {
+        $push: { comments: newComment },
+        $set: { lastUpdated: currentDate.toISOString() }
+      },
+      { returnDocument: 'after' } // Return the updated document
+    );
+
+    if (!result.value) {
+      return { status: 404, json: { error: `Bug ${bugId} not found` } };
+    }
+
+    return { status: 200, json: { message: `Comment added to bug ${bugId}` } };
+  } catch (error) {
+    console.error(error);
+    return { status: 500, json: { error: 'Internal server error' } };
+  } finally {
+    await db.close();
   }
-
-  if (typeof comment !== 'string' || typeof fullName !== 'string') {
-    return {status : 400, json: {error: `invalid comment or fullName`}};
-  }
-
-  const currentDate = new Date();
-  const commentObjectId = new ObjectId(); // Generate a new ObjectId for the comment
-  const randomUserId = new ObjectId(); // generate a random ObjectId for the userId
-
-  const newComment = {
-    _id: commentObjectId,
-    comment,
-    fullName,
-    createdAt: currentDate.toISOString(),
-    userId: randomUserId
-  };
-  
-  await collection.updateOne({_id: new ObjectId(bugId)}, {$push: {comments: newComment}}, {$set: {lastUpdated: currentDate.toISOString()} });
-
-  return {status : 200, json: {message: `Comment added to bug ${bugId}`}}
 }
 
 async function commentBugList(bugId){
@@ -371,6 +383,12 @@ async function updateTestCaseByBugId(bugId, testCaseId, version, updatedTestCase
 
 }
 
+async function saveEdit(edit){
+  const db = await connect();
+  const result = await db.collection("Edit").insertOne(edit);
+  return result;
+}
+
 
 async function findRoleByName(name){
   const db = await connect();
@@ -379,7 +397,7 @@ async function findRoleByName(name){
   return role;
 }
 // export functions
-export {newId,connect,ping,getUsers,getUserById,addUser,loginUser,updateUser,deleteUser,getBugs,getBugById,addBug,updateBug,classifyBug,assignBug,commentNewBug,commentBugList,commentBugId, testCaseNewBug, findTestCasesByBugId, findSpecificTestCaseByBugId, deleteTestCase, updateTestCaseByBugId,findRoleByName};
+export {newId,connect,ping,getUsers,getUserById,addUser,loginUser,updateUser,deleteUser,getBugs,getBugById,addBug,updateBug,classifyBug,assignBug,commentNewBug,commentBugList,commentBugId, testCaseNewBug, findTestCasesByBugId, findSpecificTestCaseByBugId, deleteTestCase, updateTestCaseByBugId,findRoleByName, saveEdit};
 
 // test the database connection
 ping();
