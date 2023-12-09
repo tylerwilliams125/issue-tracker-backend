@@ -4,8 +4,11 @@ import {nanoid} from 'nanoid';
 import Joi from 'joi';
 import{connect,getBugs,getBugById,addBug,updateBug,classifyBug,assignBug,commentNewBug,commentBugList,commentBugId, testCaseNewBug, findTestCasesByBugId, findSpecificTestCaseByBugId, deleteTestCase, updateTestCaseByBugId } from '../../database.js';
 import debug from 'debug';
+import mongodb from 'mongodb';
 import { validBody } from '../../middleWare/validBody.js';
 import { validId } from '../../middleWare/validId.js';
+import { isLoggedIn, fetchRoles, mergePermissions, hasPermission } from '@merlin4/express-auth';
+
 
 const debugBug = debug ('app.BugRouter');
 
@@ -15,6 +18,7 @@ const newBugSchema = Joi.object({
   title: Joi.string().required(),
   description: Joi.string().required(),
   stepsToReproduce: Joi.string().required(),
+  
 });
 
 const updateBugSchema = Joi.object({
@@ -143,33 +147,17 @@ router.get('/:bugId',validId('bugId'), async (req,res) =>{
   }
 });
 
-router.post('/new',validBody(newBugSchema), async (req,res) => {
-    //FIXME:create a new bug and send response as JSON
-    const { title, description, stepsToReproduce } = req.body;
-
-    // Validate the request data against the schema
-    const { error } = newBugSchema.validate({ title, description, stepsToReproduce });
-
-    if (error) {
-        return res.status(400).json({ error: error.details });
+router.post('/new',validBody(newBugSchema),isLoggedIn(), async (req,res) => {
+  try{
+    const dbResult = await addBug(newBug);
+    if(dbResult.acknowledged == true){
+        res.status(200).json({message: `Bug ${newBug.title} added with an id of ${dbResult.insertedId}`});
+    }else{
+        res.status(400).json({message: `Bug ${newBug.title} not added`});
     }
-
-    try {
-        const newBug = {
-            title,
-            description,
-            stepsToReproduce,
-            createdAt: new Date()
-        };
-
-        const result = await addBug(newBug);
-
-        res.status(200).json({ message: 'New Bug Reported!' });
-    } catch (err) {
-        console.error('Database error:', err);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-
+} catch(err){
+ res.status(500).json({error: err.stack});
+}
 });
 
 router.put('/:bugId',validBody(updateBugSchema), async (req,res) => {

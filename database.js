@@ -97,7 +97,7 @@ async function getBugById(id){
 async function addBug(bug){
   const db = await connect();
   const result = await db.collection("Bug").insertOne(bug);
-  //debugDatabase(result.insertId)
+  debugDatabase(result.insertId)
   return result;
 }
 

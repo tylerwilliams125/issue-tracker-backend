@@ -61,6 +61,7 @@ const loginUserSchema = Joi.object({
 });
 
 const updateUserSchema = Joi.object({
+  email: Joi.string().email(),
   password: Joi.string(),
   fullName: Joi.string(),
   givenName: Joi.string(),
@@ -147,7 +148,7 @@ router.get('/list',isLoggedIn(), async (req, res) =>{
   }
 });
 
-router.get("/:userId", validId('userId'), async (req, res) => {
+router.get("/:userId", validId('userId'),hasPermission('canViewData'), async (req, res) => {
   const userId = req.params.userId;
 
   if (!isValidObjectId(userId)) {
@@ -189,30 +190,47 @@ router.get("/:userId", validId('userId'), async (req, res) => {
 });
 
 router.post('/register', validBody(newUserSchema), async (req, res) => {
-  const newUser = 
-    {
-        _id: newId(),
-        ...req.body,
-        createdDate: new Date(),
-    }
-    
-    newUser.password = await bcrypt.hash(newUser.password, 10);
-    try{
-        const result = await addUser(newUser);
-       if(result.acknowledged==true){
-            //Ready to create the cookie and JWT Token
-            const authToken = await issueAuthToken(newUser);
-            issueAuthCookie(res, authToken);
+ // Create a new user object with additional information
+ const newUser = {
+  _id: newId(),
+  ...req.body,
+  createdOn: new Date(),
+  role: ['developer'],
+};
 
-            res.status(200).json({
-                message: `New user ${newUser.fullName} added`,
-                fullName: newUser.fullName,
-                role: newUser.role,
-            });
-       }
-    }catch(err){
-        res.status(500).json({error: err.stack});
-    }
+// Hash the password using bcrypt
+newUser.password = await bcrypt.hash(newUser.password, 10);
+
+try {
+  // Add the user to the users collection
+  const result = await addUser(newUser);
+
+  if (result.acknowledged) {
+    // Add a record to the edits collection to track the changes
+    const edit = {
+      timestamp: new Date(),
+      col: 'user',
+      op: 'insert',
+      target: { userId: newUser._id },
+      update: newUser,
+    };
+
+    await saveEdit(edit);
+
+    // Ready to create the cookie and JWT Token
+    const authToken = await issueAuthToken(newUser);
+    issueAuthCookie(res, authToken);
+
+    res.status(200).json({
+      message: `New user ${newUser.fullName} added`,
+      fullName: newUser.fullName,
+      role: newUser.role,
+    });
+  }
+} catch (err) {
+  console.error('Error registering user:', err);
+  res.status(500).json({ error: 'Internal server error' });
+}
 });
 
 router.post('/login', validBody(loginUserSchema), async (req, res) => {
@@ -220,51 +238,97 @@ router.post('/login', validBody(loginUserSchema), async (req, res) => {
 
   const resultUser = await loginUser(user);
   debugUser(resultUser);
-  if(resultUser && await bcrypt.compare(user.password, resultUser.password)){
-      const authToken = await issueAuthToken(resultUser);
-      issueAuthCookie(res, authToken);
-      res.status(200).json({
-          message:`Welcome ${resultUser.fullName}`,
-          authToken:authToken,
-          email:resultUser.email,
-          fullName:resultUser.fullName,
-          role:resultUser.role,
-      } );
-  }else{
-      res.status(401).json(`email or password incorrect`);
+
+  if (resultUser && (await bcrypt.compare(user.password, resultUser.password))) {
+    // User authentication successful
+    const authToken = await issueAuthToken(resultUser);
+    issueAuthCookie(res, authToken);
+
+    res.status(200).json({
+      message: `Welcome ${resultUser.fullName}`,
+      authToken: authToken,
+      email: resultUser.email,
+      fullName: resultUser.fullName,
+      role: resultUser.role,
+    });
+  } else {
+    // Authentication failed
+    res.status(401).json({ error: 'Email or password incorrect' });
   }
 });
 
-router.put('/:userId',validBody(updateUserSchema), async (req,res) => {
-  //FIXME: update existing user and send response as JSON
-  const userId = req.params.userId;
+router.put('/:userId', validBody(updateUserSchema), validId('id'), async (req, res) => {
+  try {
+    debugUser('Admin Route Updating a user');
+    const updatedUser = req.body;
+    const user = await getUserById(req.id);
 
-    // Check if userId is a valid ObjectId
-    if (!isValidObjectId(userId)) {
-        return res.status(404).json({ error: `userId ${userId} is not a valid ObjectId.` });
+    if (!user) {
+      return res.status(404).json({ message: `User ${req.id} not found` });
     }
 
-    try {
-        // Validate the request data against the schema
-        const { error } = userUpdateSchema.validate(req.body);
-
-        if (error) {
-            return res.status(400).json({ error: error.details });
-        }
-
-        // Construct the update object with only the fields provided in the request
-        const updatedUser = { ...req.body };
-
-        const updateResult = await updateUser(userId, updatedUser);
-
-        if (updateResult.modifiedCount === 1) {
-            res.status(200).json({ message: `User ${userId} updated` });
-        } else {
-            res.status(400).json({ message: `User ${userId} not updated` });
-        }
-    } catch (err) {
-        res.status(500).json({ error: err.stack });
+    if (updatedUser.fullName) {
+      user.fullName = updatedUser.fullName;
     }
+
+    if (updatedUser.password) {
+      user.password = await bcrypt.hash(updatedUser.password, 10);
+    }
+
+    // Ensure email is not updated unintentionally
+    if ('email' in updatedUser) {
+      return res.status(400).json({ message: 'Updating email is not allowed' });
+    }
+
+    const dbResult = await updateUser(user);
+
+    if (dbResult.modifiedCount === 1) {
+      const edit = {
+        timeStamp: new Date(),
+        op: 'Admin Update User',
+        collection: 'User',
+        target: user._id,
+        auth: req.auth,
+      };
+      await saveEdit(edit);
+      res.status(200).json({ message: `User ${req.id} updated` });
+    } else {
+      res.status(400).json({ message: `User ${req.id} not updated` });
+    }
+  } catch (err) {
+    console.error('Error updating user:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
+
+router.get('/me', isLoggedIn(),validId('userId'), async (req, res) => {
+  try {
+    // Ensure that req.auth contains the user's authentication information
+    const userId = req.auth._id;
+
+    // Query the database to get user information by userId
+    const user = await getUserById(userId);
+
+    if (user) {
+      // Return user data to the client
+      res.status(200).json({
+        userId: user._id,
+        email: user.email,
+        fullName: user.fullName,
+        role: user.role,
+        // Add other fields as needed
+      });
+    } else {
+      // User not found in the database
+      res.status(404).json({ error: 'User not found' });
+    }
+  } catch (err) {
+    // Handle any server-side errors
+    console.error('Error retrieving user data:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 router.delete('/:userId', async (req,res) =>{
@@ -293,13 +357,3 @@ router.delete('/:userId', async (req,res) =>{
 export {router as UserRouter};
 
 
-// const newUser = {
-//   _id: userId,
-//   email,
-//   password: hashedPassword,
-//   fullName,
-//   givenName,
-//   familyName,
-//   createdAt,
-//   role,
-// };
