@@ -151,44 +151,18 @@ router.get('/list', isLoggedIn(), async (req, res) => {
   }
 });
 
-router.get("/:userId", validId('userId'),isLoggedIn(), async (req, res) => {
-  const userId = req.params.userId;
-
-  if (!isValidObjectId(userId)) {
-    return res.status(404).json({ error: `userId ${userId} is not a valid ObjectId.` });
-  }
-
-  try {
-    const user = await getUserById(userId);
-
-    if (user) {
-      const { username, password } = req.body;
-
-      if (!username || !password) {
-        return res.status(400).json({ error: 'Username and password are required.' });
+router.get('/:id', isLoggedIn(), validId('id'), async (req,res) => {
+  debugUser('User Route Getting user data');
+  const id = req.id;
+  try{
+      const user = await getUserById(id);
+      if(user){
+          res.status(200).json(user);
+      }else{
+          res.status(404).json({message: `User ${id} not found`});
       }
-
-      // Validate the user's credentials
-      if (await bcrypt.compare(password, user.password)) {
-        const authPayload = {
-          userId: user._id,
-        };
-        const authSecret = config.get('auth.secret');
-        const authExpiresIn = config.get('auth.tokenExpiresIn');
-        const authToken = jwt.sign(authPayload, authSecret, { expiresIn: authExpiresIn });
-
-        const authMaxAge = parseInt(config.get('auth.cookieMaxAge'));
-        res.cookie('authToken', authToken, { maxAge: authMaxAge, httpOnly: true });
-
-        res.status(200).json({ message: 'Welcome Back!', userId: user._id, authToken });
-      } else {
-        res.status(401).json({ error: 'Authentication failed' });
-      }
-    } else {
-      res.status(404).json({ error: `User with userId ${userId} not found.` });
-    }
-  } catch (err) {
-    res.status(500).json({ error: err.stack });
+  } catch(err){
+      res.status(500).json({error: err.stack});
   }
 });
 
@@ -260,46 +234,59 @@ router.post('/login', validBody(loginUserSchema), async (req, res) => {
   }
 });
 
-router.put('/:userId', validBody(updateUserSchema), validId('userId'), async (req, res) => {
-  debugUser(`Self Service Route Updating a user ${JSON.stringify(req.auth)}`);
+router.put('/:id', isLoggedIn(), validId('id'), validBody(updateUserSchema), async (req, res) => {
+  try {
+    debugUser('Admin Route Updating a user');
+    
     const updatedUser = req.body;
-   
-    try{
-        const user = await getUserById(newId(req.auth._id));
-        if(user){
-            if(updatedUser.fullName){
-                user.fullName = updatedUser.fullName;
-            }
-            if(updatedUser.password){
-                user.password = await bcrypt.hash(updatedUser.password, 10);
-            }
-            const dbResult = await updateUser(user);
-            if(dbResult.modifiedCount == 1){
-                const edit ={
-                    timeStamp: new Date(),
-                    op:'Self-Edit Update User',
-                    collection:'User',
-                    target:user._id,
-                    auth:req.auth
-                }
-                await saveEdit(edit);
-                res.status(200).json({message: `User ${req.auth._id} updated`});
-                return;
-            }else{
-                res.status(400).json({message: `User ${req.auth._id} not updated`});
-                return;
-            }
-        }else{
-            res.status(400).json({message: `User ${req.auth._id} not updated`});
-        }
-    }catch(err){
-        res.status(500).json({error: err.stack});
+    const userId = req.params.id;
+
+    // Retrieve the user by ID
+    const user = await getUserById(userId);
+
+    if (user) {
+      // Update user properties based on the request body
+      if (updatedUser.fullName) {
+        user.fullName = updatedUser.fullName;
+      }
+      if (updatedUser.password) {
+        user.password = await bcrypt.hash(updatedUser.password, 10);
+      }
+
+      // Ensure that other fields are updated as needed
+
+      // Perform the update operation
+      const dbResult = await updateUser(user);
+
+      if (dbResult.modifiedCount === 1) {
+        // Log the edit
+        const edit = {
+          timeStamp: new Date(),
+          op: 'Admin Update User',
+          collection: 'User',
+          target: user._id,
+          update: { ...updatedUser }, // Include other updated fields if needed
+          auth: req.auth,
+        };
+        await saveEdit(edit);
+
+        res.status(200).json({ message: `User ${userId} updated` });
+      } else {
+        res.status(400).json({ message: `User ${userId} not updated` });
+      }
+    } else {
+      res.status(404).json({ message: `User ${userId} not found` });
     }
+  } catch (err) {
+    console.error('Error updating user:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 
 
-router.get('/me', isLoggedIn(), validId('id'), async (req, res) => {
+
+router.get('/me', isLoggedIn(), validId('userId'), async (req, res) => {
   debugUser('User Route Getting user data');
   try {
     // Ensure that req.auth contains the user's authentication information
@@ -311,7 +298,7 @@ router.get('/me', isLoggedIn(), validId('id'), async (req, res) => {
     if (user) {
       // Return user data to the client
       res.status(200).json({
-        id: user._id,
+       
         email: user.email,
         fullName: user.fullName,
         role: user.role,
@@ -328,43 +315,57 @@ router.get('/me', isLoggedIn(), validId('id'), async (req, res) => {
   }
 });
 
-router.put('/me', isLoggedIn(),validBody(updateUserSchema), async (req,res) => {
+
+router.put('/me', isLoggedIn(), validBody(updateUserSchema), validId('id'), async (req, res) => {
   debugUser(`Self Service Route Updating a user ${JSON.stringify(req.auth)}`);
   const updatedUser = req.body;
- 
-  try{
-      const user = await getUserById(newId(req.auth._id));
-      if(user){
-          if(updatedUser.fullName){
-              user.fullName = updatedUser.fullName;
-          }
-          if(updatedUser.password){
-              user.password = await bcrypt.hash(updatedUser.password, 10);
-          }
-          const dbResult = await updateUser(user);
-          if(dbResult.modifiedCount == 1){
-              const edit ={
-                  timeStamp: new Date(),
-                  op:'Self-Edit Update User',
-                  collection:'User',
-                  target:user._id,
-                  auth:req.auth
-              }
-              await saveEdit(edit);
-              res.status(200).json({message: `User ${req.auth._id} updated`});
-              return;
-          }else{
-              res.status(400).json({message: `User ${req.auth._id} not updated`});
-              return;
-          }
-      }else{
-          res.status(400).json({message: `User ${req.auth._id} not updated`});
+
+  try {
+    const id = req.auth._id; // Extract user ID from authentication information
+    const user = await getUserById(id);
+
+    if (user) {
+      if (updatedUser.fullName) {
+        user.fullName = updatedUser.fullName;
       }
-  }catch(err){
-      res.status(500).json({error: err.stack});
+      if (updatedUser.password) {
+        user.password = await bcrypt.hash(updatedUser.password, 10);
+      }
+
+      // Update additional fields
+      user.lastUpdatedOn = new Date();
+      user.lastUpdatedBy = req.auth;
+
+      const dbResult = await updateUser(user);
+
+      if (dbResult.modifiedCount === 1) {
+        const edit = {
+          timeStamp: new Date(),
+          op: 'Self-Edit Update User',
+          collection: 'User',
+          target: user._id,
+          update: { ...updatedUser, lastUpdatedOn: user.lastUpdatedOn, lastUpdatedBy: user.lastUpdatedBy },
+          auth: req.auth,
+        };
+        await saveEdit(edit);
+
+        // Issue a new token with updated information
+        const authToken = await issueAuthToken(user);
+        issueAuthCookie(res, authToken);
+
+        res.status(200).json({ message: `User ${id} updated` });
+      } else {
+        res.status(400).json({ message: `User ${id} not updated` });
+      }
+    } else {
+      res.status(400).json({ message: `User ${id} not found` });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.stack });
   }
- 
 });
+
+
 
 router.delete('/:userId', isLoggedIn(), async (req, res) => {
 // Ensure that the user is logged in before proceeding
