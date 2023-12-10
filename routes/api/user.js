@@ -72,7 +72,7 @@ const updateUserSchema = Joi.object({
 
 
 
-
+//works
 router.get('/list', isLoggedIn(), async (req, res) => {
   try {
     const db = await connect();
@@ -150,7 +150,7 @@ router.get('/list', isLoggedIn(), async (req, res) => {
     res.status(500).json({ error: err.stack });
   }
 });
-
+//works
 router.get('/:id', isLoggedIn(), validId('id'), async (req,res) => {
   debugUser('User Route Getting user data');
   const id = req.id;
@@ -165,7 +165,7 @@ router.get('/:id', isLoggedIn(), validId('id'), async (req,res) => {
       res.status(500).json({error: err.stack});
   }
 });
-
+//works
 router.post('/register', validBody(newUserSchema), async (req, res) => {
  // Create a new user object with additional information
  const newUser = {
@@ -209,7 +209,7 @@ try {
   res.status(500).json({ error: 'Internal server error' });
 }
 });
-
+//works
 router.post('/login', validBody(loginUserSchema), async (req, res) => {
   const user = req.body;
 
@@ -233,7 +233,7 @@ router.post('/login', validBody(loginUserSchema), async (req, res) => {
     res.status(401).json({ error: 'Email or password incorrect' });
   }
 });
-
+//to be fixed
 router.put('/:id', isLoggedIn(), validId('id'), validBody(updateUserSchema), async (req, res) => {
   try {
     debugUser('Admin Route Updating a user');
@@ -285,37 +285,36 @@ router.put('/:id', isLoggedIn(), validId('id'), validBody(updateUserSchema), asy
 
 
 
-
-router.get('/me', isLoggedIn(), validId('userId'), async (req, res) => {
-  debugUser('User Route Getting user data');
+//to be fixed
+router.get('/me', isLoggedIn(),validId('userId'), async (req, res) => {
   try {
+    debugUser('User Route Getting user data');
+
     // Ensure that req.auth contains the user's authentication information
     const userId = req.auth._id;
+
+    // Check if the userId is a valid ObjectId
+    if (!ObjectId.isValid(userId)) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
 
     // Query the database to get user information by userId
     const user = await getUserById(userId);
 
     if (user) {
       // Return user data to the client
-      res.status(200).json({
-       
-        email: user.email,
-        fullName: user.fullName,
-        role: user.role,
-        // Add other fields as needed
-      });
+      res.status(200).json(user);
     } else {
       // User not found in the database
-      res.status(404).json({ error: 'User not found' });
+      res.status(404).json({ message: `User ${userId} not found` });
     }
   } catch (err) {
     // Handle any server-side errors
     console.error('Error retrieving user data:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: err.stack });
   }
 });
-
-
+//to be fixed
 router.put('/me', isLoggedIn(), validBody(updateUserSchema), validId('id'), async (req, res) => {
   debugUser(`Self Service Route Updating a user ${JSON.stringify(req.auth)}`);
   const updatedUser = req.body;
@@ -366,7 +365,7 @@ router.put('/me', isLoggedIn(), validBody(updateUserSchema), validId('id'), asyn
 });
 
 
-
+//works
 router.delete('/:userId', isLoggedIn(), async (req, res) => {
 // Ensure that the user is logged in before proceeding
 if (!req.auth) {

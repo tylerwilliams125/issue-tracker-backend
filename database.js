@@ -97,7 +97,6 @@ async function getBugById(id){
 async function addBug(bug){
   const db = await connect();
   const result = await db.collection("Bug").insertOne(bug);
-  debugDatabase(result.insertId)
   return result;
 }
 
@@ -113,6 +112,14 @@ async function classifyBug(id, classifiedBug){
   const result = await db.collection("Bug").updateOne({_id: new ObjectId(id)},{$set:{...classifiedBug}});
   console.table(result);
   return result;
+}
+
+async function closeBug(id, closedBug) {
+    const db = await connect();
+    const result = await db.collection("Bug").updateOne({ _id: new ObjectId(id)},{ $set:{...closedBug}});
+    console.table(result);
+    return result;
+  
 }
 
 async function assignBug(id, assignedBug){
@@ -397,7 +404,7 @@ async function findRoleByName(name){
   return role;
 }
 // export functions
-export {newId,connect,ping,getUsers,getUserById,addUser,loginUser,updateUser,deleteUser,getBugs,getBugById,addBug,updateBug,classifyBug,assignBug,commentNewBug,commentBugList,commentBugId, testCaseNewBug, findTestCasesByBugId, findSpecificTestCaseByBugId, deleteTestCase, updateTestCaseByBugId,findRoleByName, saveEdit};
+export {newId,connect,ping,getUsers,getUserById,addUser,loginUser,updateUser,deleteUser,getBugs,getBugById,addBug,updateBug,classifyBug,closeBug,assignBug,commentNewBug,commentBugList,commentBugId, testCaseNewBug, findTestCasesByBugId, findSpecificTestCaseByBugId, deleteTestCase, updateTestCaseByBugId,findRoleByName, saveEdit};
 
 // test the database connection
 ping();
