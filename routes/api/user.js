@@ -73,9 +73,7 @@ const updateUserSchema = Joi.object({
 
 
 
-router.get('/list',isLoggedIn(), async (req, res) =>{
-  
-
+router.get('/list', isLoggedIn(), async (req, res) => {
   try {
     const db = await connect();
     const collection = db.collection('User');
@@ -107,7 +105,12 @@ router.get('/list',isLoggedIn(), async (req, res) =>{
     if (req.query.minAge) {
       const minAgeDate = new Date();
       minAgeDate.setDate(minAgeDate.getDate() - parseInt(req.query.minAge));
-      query.createdAt = { ...query.createdAt, $lt: minAgeDate };
+
+      // Use $and operator to combine conditions
+      query.createdAt = {
+        ...query.createdAt,
+        $lt: minAgeDate,
+      };
     }
 
     // Handle the "closed" query parameter
@@ -148,7 +151,7 @@ router.get('/list',isLoggedIn(), async (req, res) =>{
   }
 });
 
-router.get("/:userId", validId('userId'),hasPermission('canViewData'), async (req, res) => {
+router.get("/:userId", validId('userId'),isLoggedIn(), async (req, res) => {
   const userId = req.params.userId;
 
   if (!isValidObjectId(userId)) {
@@ -257,53 +260,47 @@ router.post('/login', validBody(loginUserSchema), async (req, res) => {
   }
 });
 
-router.put('/:userId', validBody(updateUserSchema), validId('id'), async (req, res) => {
-  try {
-    debugUser('Admin Route Updating a user');
+router.put('/:userId', validBody(updateUserSchema), validId('userId'), async (req, res) => {
+  debugUser(`Self Service Route Updating a user ${JSON.stringify(req.auth)}`);
     const updatedUser = req.body;
-    const user = await getUserById(req.id);
-
-    if (!user) {
-      return res.status(404).json({ message: `User ${req.id} not found` });
+   
+    try{
+        const user = await getUserById(newId(req.auth._id));
+        if(user){
+            if(updatedUser.fullName){
+                user.fullName = updatedUser.fullName;
+            }
+            if(updatedUser.password){
+                user.password = await bcrypt.hash(updatedUser.password, 10);
+            }
+            const dbResult = await updateUser(user);
+            if(dbResult.modifiedCount == 1){
+                const edit ={
+                    timeStamp: new Date(),
+                    op:'Self-Edit Update User',
+                    collection:'User',
+                    target:user._id,
+                    auth:req.auth
+                }
+                await saveEdit(edit);
+                res.status(200).json({message: `User ${req.auth._id} updated`});
+                return;
+            }else{
+                res.status(400).json({message: `User ${req.auth._id} not updated`});
+                return;
+            }
+        }else{
+            res.status(400).json({message: `User ${req.auth._id} not updated`});
+        }
+    }catch(err){
+        res.status(500).json({error: err.stack});
     }
-
-    if (updatedUser.fullName) {
-      user.fullName = updatedUser.fullName;
-    }
-
-    if (updatedUser.password) {
-      user.password = await bcrypt.hash(updatedUser.password, 10);
-    }
-
-    // Ensure email is not updated unintentionally
-    if ('email' in updatedUser) {
-      return res.status(400).json({ message: 'Updating email is not allowed' });
-    }
-
-    const dbResult = await updateUser(user);
-
-    if (dbResult.modifiedCount === 1) {
-      const edit = {
-        timeStamp: new Date(),
-        op: 'Admin Update User',
-        collection: 'User',
-        target: user._id,
-        auth: req.auth,
-      };
-      await saveEdit(edit);
-      res.status(200).json({ message: `User ${req.id} updated` });
-    } else {
-      res.status(400).json({ message: `User ${req.id} not updated` });
-    }
-  } catch (err) {
-    console.error('Error updating user:', err);
-    res.status(500).json({ error: 'Internal server error' });
-  }
 });
 
 
 
-router.get('/me', isLoggedIn(),validId('userId'), async (req, res) => {
+router.get('/me', isLoggedIn(), validId('id'), async (req, res) => {
+  debugUser('User Route Getting user data');
   try {
     // Ensure that req.auth contains the user's authentication information
     const userId = req.auth._id;
@@ -314,7 +311,7 @@ router.get('/me', isLoggedIn(),validId('userId'), async (req, res) => {
     if (user) {
       // Return user data to the client
       res.status(200).json({
-        userId: user._id,
+        id: user._id,
         email: user.email,
         fullName: user.fullName,
         role: user.role,
@@ -331,28 +328,79 @@ router.get('/me', isLoggedIn(),validId('userId'), async (req, res) => {
   }
 });
 
-router.delete('/:userId', async (req,res) =>{
-    //FIXME: delete user and send response as JSON
-     //gets the id from the url
-  //gets the id from the url
-  const userId = req.params.userId;
-
-  // Check if userId is a valid ObjectId
-  if (!isValidObjectId(userId)) {
-      return res.status(404).json({ error: `userId ${userId} is not a valid ObjectId.` });
-  }
-
-  try {
-      const dbResult = await deleteUser(userId);
-      if (dbResult.deletedCount === 1) {
-          res.status(200).json({ message: `User ${userId} deleted` });
-      } else {
-          res.status(400).json({ message: `User ${userId} not deleted` });
+router.put('/me', isLoggedIn(),validBody(updateUserSchema), async (req,res) => {
+  debugUser(`Self Service Route Updating a user ${JSON.stringify(req.auth)}`);
+  const updatedUser = req.body;
+ 
+  try{
+      const user = await getUserById(newId(req.auth._id));
+      if(user){
+          if(updatedUser.fullName){
+              user.fullName = updatedUser.fullName;
+          }
+          if(updatedUser.password){
+              user.password = await bcrypt.hash(updatedUser.password, 10);
+          }
+          const dbResult = await updateUser(user);
+          if(dbResult.modifiedCount == 1){
+              const edit ={
+                  timeStamp: new Date(),
+                  op:'Self-Edit Update User',
+                  collection:'User',
+                  target:user._id,
+                  auth:req.auth
+              }
+              await saveEdit(edit);
+              res.status(200).json({message: `User ${req.auth._id} updated`});
+              return;
+          }else{
+              res.status(400).json({message: `User ${req.auth._id} not updated`});
+              return;
+          }
+      }else{
+          res.status(400).json({message: `User ${req.auth._id} not updated`});
       }
-  } catch (err) {
-      res.status(500).json({ error: err.stack });
+  }catch(err){
+      res.status(500).json({error: err.stack});
   }
+ 
 });
+
+router.delete('/:userId', isLoggedIn(), async (req, res) => {
+// Ensure that the user is logged in before proceeding
+if (!req.auth) {
+  return res.status(401).json({ error: 'User not logged in' });
+}
+
+const userId = req.params.userId;
+
+// Check if userId is a valid ObjectId using a regular expression
+const objectIdRegex = /^[0-9a-fA-F]{24}$/;
+if (!objectIdRegex.test(userId)) {
+  return res.status(404).json({ error: `userId ${userId} is not a valid ObjectId.` });
+}
+
+try {
+  const dbResult = await deleteUser(userId);
+  if (dbResult.deletedCount === 1) {
+    const edit = {
+      timeStamp: new Date(),
+      op: 'delete',
+      collection: 'user',
+      target: { userId: new ObjectId(userId) }, // Convert userId to ObjectId
+      auth: req.auth,
+    };
+    await saveEdit(edit);
+
+    res.status(200).json({ message: `User ${userId} deleted` });
+  } else {
+    res.status(400).json({ message: `User ${userId} not deleted` });
+  }
+} catch (err) {
+  res.status(500).json({ error: err.stack });
+}
+});
+
 
 export {router as UserRouter};
 
