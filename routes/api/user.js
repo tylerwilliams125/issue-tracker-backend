@@ -342,6 +342,8 @@ router.get('/me', isLoggedIn(), validId('userId'), async (req, res) => {
     res.status(500).json({ error: err.stack });
   }
 });
+
+
 //to be fixed
 router.put('/:userId', isLoggedIn(), validId('userId'), validBody(updateUserSchema), async (req, res) => {
   try {
