@@ -431,43 +431,18 @@ router.post('/:bugId/comment/new', isLoggedIn(), validId('bugId'), validBody(bug
     return res.status(401).json({ error: 'Unauthorized. User not logged in.' });
   }
 
-  const { fullName, comment } = req.auth; // Using req.auth for commenter's information
-
+  const { comment } = req.body; // Extract from req.body
+  const fullName = req.auth; // Extract from req.auth
   try {
-    const db = await connect(); // Assuming you have a function to connect to the database
-    const collection = db.collection('Bug');
+    const result = await commentNewBug(bugId, fullName, comment);
 
-    // Use findOneAndUpdate to atomically update the document
-    const currentDate = new Date();
-    const commentObjectId = new ObjectId();
-    const randomUserId = new ObjectId();
+    
+      res.status(200).json({ message: `Comment added to bug ${bugId}` });
 
-    const newComment = {
-      _id: commentObjectId,
-      comment,
-      fullName,
-      createdAt: currentDate.toISOString(),
-      userId: randomUserId,
-    };
-
-    const result = await collection.findOneAndUpdate(
-      { _id: new ObjectId(bugId) },
-      {
-        $push: { comments: newComment },
-        $set: { lastUpdated: currentDate.toISOString() },
-      },
-      { returnDocument: 'after' } // Return the updated document
-    );
-
-    if (!result.value) {
-      return res.status(404).json({ error: `Bug ${bugId} not found` });
-    }
-
-    res.status(200).json({ message: `Comment added to bug ${bugId}` });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Internal server error' });
-  } 
+  }
 });
 
 
@@ -552,44 +527,49 @@ router.get('/:bugId/test/:testCaseId',validId('bugId'),validId('testCaseId'), as
 
 router.delete('/:bugId/test/:testCaseId',validId('bugId'),validId('testCaseId'), async (req,res) =>{
 
-    const { bugId, testCaseId } = req.params;
-    const updatedFields = {};
+  const { bugId, testCaseId } = req.params;
+  const updatedFields = {};
 
-    try{
-      const result = await deleteTestCase(bugId, testCaseId, updatedFields, req);
-      
-      if (result.status === 204) {
-        const authToken = issueAuthToken(bug);
-      }else if(result.status === 404){
-        res.status(result.status).json(result.json);
-      }else{
-        res.status(500).send('Internal server error');
-      }
-    }catch(error){
-      console.error(error);
-      res.status(500).json({error: 'Internal server error'});
+  try{
+    const result = await deleteTestCase(bugId, testCaseId, updatedFields, req);
+    
+    if (result.status === 204) {
+      const authToken = issueAuthToken(bug);
+    }else if(result.status === 404){
+      res.status(result.status).json(result.json);
+    }else{
+      res.status(500).send('Internal server error');
     }
+  }catch(error){
+    console.error(error);
+    res.status(500).json({error: 'Internal server error'});
+  }
 
 });
 
-router.put('/:bugId/test/:testCaseId',validId('bugId'),validId('testCaseId'),validBody(bugTestCaseSchema), async (req,res) =>{
-  
-  try{
-      const { bugId, testCaseId } = req.params;
-      const { version, ...updatedFields } = req.body;
 
-      const auth = req.bug;
+router.put('/:bugId/test/:testCaseId', isLoggedIn(), validId('bugId'), validId('testCaseId'), validBody(bugTestCaseSchema), async (req, res) => {
+  try {
+    const { bugId, testCaseId } = req.params;
+    const { version, ...updatedFields} = req.body;
 
-      const updateResult = await updateTestCaseByBugId(bugId, testCaseId, version, updatedFields, auth);
-      
-      if(updateResult.success){
-        res.status(200).json({message:'Test case fields updated successfully',  authToken: updateResult.authToken});
-      }else{
-        res.status(404).json({error: updateResult.message});
-      }
-    }catch(err){
+    // Ensure user is logged in
+    if (!req.auth) {
+      return res.status(401).json({ error: 'Unauthorized. User not logged in.' });
+    }
+
+    const auth = req.auth;
+
+    const updateResult = await updateTestCaseByBugId(bugId, testCaseId, version, updatedFields, auth);
+
+    if (updateResult.success) {
+      res.status(200).json({ message: 'Test case fields updated successfully', authToken: updateResult.authToken });
+    } else {
+      res.status(404).json({ error: updateResult.message });
+    }
+  } catch (err) {
     console.error(err);
-    res.status(500).json({error: 'Internal server error'});
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
