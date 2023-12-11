@@ -130,10 +130,9 @@ async function assignBug(id, assignedBug){
 }
 
 async function commentNewBug(bugId, fullName, comment) {
-  const db = await connect();
-
   try {
-    const collection = db.collection("Bug");
+    const db = await connect(); // Assuming you have a function to connect to the database
+    const collection = db.collection('Bug');
 
     // Use findOneAndUpdate to atomically update the document
     const currentDate = new Date();
@@ -145,14 +144,14 @@ async function commentNewBug(bugId, fullName, comment) {
       comment,
       fullName,
       createdAt: currentDate.toISOString(),
-      userId: randomUserId
+      userId: randomUserId,
     };
 
     const result = await collection.findOneAndUpdate(
       { _id: new ObjectId(bugId) },
       {
         $push: { comments: newComment },
-        $set: { lastUpdated: currentDate.toISOString() }
+        $set: { lastUpdated: currentDate.toISOString() },
       },
       { returnDocument: 'after' } // Return the updated document
     );
@@ -165,9 +164,7 @@ async function commentNewBug(bugId, fullName, comment) {
   } catch (error) {
     console.error(error);
     return { status: 500, json: { error: 'Internal server error' } };
-  } finally {
-    await db.close();
-  }
+  } 
 }
 
 async function commentBugList(bugId){
@@ -196,7 +193,7 @@ async function commentBugId(bugId, commentId){
 
   if (bug) {
     //find the specific comment with the given commentId
-    const commment = bug.comments.find((comment) => comment._id.toString() === commentId);
+    const comment = bug.comments.find((comment) => comment._id.toString() === commentId);
 
     return comment; //return the comment object
 
@@ -210,47 +207,62 @@ async function commentBugId(bugId, commentId){
 
 }
 
-  async function testCaseNewBug(bugId, userId, version, req){
-    try{
-      const db = await connect();
-      const collection = db.collection("Bug");
-
-      const bug = await collection.findOne({_id: new ObjectId(bugId)});
-
-      if (!bug) {
-        return {status : 404, json: {error: `Bug ${bugId} not found`}};
-      }
-      const createdBy = new ObjectId(req.auth?.userId);
-
-
-      const newTestCase = {
-        testId: new ObjectId(),
-        userId: createdBy,
-        passed: true,
-        createdOn: new Date(),
-        version: version,
-        appliedOnDate: new Date(),
-      };
-
-      bug.testCases.push(newTestCase);
-
-      await collection.updateOne({_id: new ObjectId(bugId)}, {$set: {testCases: bug.testCases}});
-      const editsCollection = db.collection('Edits');
-      const changeRecord = {
-        timestamp: new Date(),
-        col: 'testCases',
-        op: 'create',
-        target: {bugId: new ObjectId(bugId)},
-        update: {testCases: bug.testCases},
-        auth: req.auth};
-      
-      await editsCollection.insertOne(changeRecord);
-      return {status : 200, json: {message: `Test Case added to bug ${bugId}`}}
-
-    }catch(err){
-      return {status : 500, json: {error: err.stack}};
+async function testCaseNewBug(bugId, userId, version, req) {
+  try {
+    // Ensure user is logged in
+    if (!req.auth) {
+      return { status: 401, json: { error: 'Unauthorized. User not logged in.' } };
     }
+
+    const db = await connect();
+    const collection = db.collection('Bug');
+
+    const bug = await collection.findOne({ _id: new ObjectId(bugId) });
+
+    if (!bug) {
+      return { status: 404, json: { error: `Bug ${bugId} not found` } };
+    }
+
+    // Ensure bug.testCases is initialized as an array
+    if (!bug.testCases) {
+      bug.testCases = [];
+    }
+
+    const createdBy = new ObjectId(req.auth.userId);
+    const createdOn = new Date();
+
+    const newTestCase = {
+      testId: new ObjectId(),
+      userId: createdBy,
+      passed: true,
+      createdOn: createdOn,
+      version: version,
+      appliedOnDate: new Date(),
+    };
+
+    bug.testCases.push(newTestCase);
+
+    await collection.updateOne({ _id: new ObjectId(bugId) }, { $set: { testCases: bug.testCases } });
+
+    const editsCollection = db.collection('Edits');
+    const changeRecord = {
+      timestamp: new Date(),
+      col: 'testCases',
+      op: 'create',
+      target: { bugId: new ObjectId(bugId) },
+      update: { testCases: bug.testCases },
+      auth: req.auth,
+    };
+
+    await editsCollection.insertOne(changeRecord);
+
+    return { status: 200, json: { message: `Test Case added to bug ${bugId}` } };
+  } catch (err) {
+    return { status: 500, json: { error: err.stack } };
+  }
 }
+
+
 
 async function findTestCasesByBugId(bugId){
   const db = await connect();

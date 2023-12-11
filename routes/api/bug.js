@@ -41,7 +41,7 @@ const closeBugSchema = Joi.object({
 });
 
 const bugCommentSchema = Joi.object({
-  fullName: Joi.string().required(),
+  
   comment: Joi.string().required()
 });
 
@@ -301,48 +301,67 @@ router.put('/:bugId/classify', isLoggedIn(), validBody(classifyBugSchema), async
   }
 });
 
-router.put('/:bugId/assign',validBody(assignBugSchema), async (req,res) =>{
-    //FIXME: assign bug to a user and send response as JSON
-    const bugId = req.params.bugId;
+router.put('/:bugId/assign', isLoggedIn(), validBody(assignBugSchema), async (req, res) => {
+  const bugId = req.params.bugId;
 
-    // Check if bugId is a valid ObjectId
-    if (!isValidObjectId(bugId)) {
-        return res.status(404).json({ error: `bugId ${bugId} is not a valid ObjectId.` });
+  // Check if bugId is a valid ObjectId
+  if (!ObjectId.isValid(bugId)) {
+    return res.status(404).json({ error: `bugId ${bugId} is not a valid ObjectId.` });
+  }
+
+  // Ensure that req.auth contains the user's authentication information
+  const assignedBy = req.auth; // Assuming you have user information in req.auth
+
+  // Read the assignedToUserId and assignedToUserName from the request body
+  const { assignedToUserId, assignedToUserName } = req.body;
+
+  // Validate the request data against the schema
+  const { error } = assignBugSchema.validate({ assignedToUserId, assignedToUserName });
+
+  if (error) {
+    return res.status(400).json({ error: error.details });
+  }
+
+  try {
+    // Check if the bug exists
+    const bug = await getBugById(bugId);
+
+    if (!bug) {
+      return res.status(404).json({ error: `Bug ${bugId} not found.` });
     }
 
-    // Read the assignedToUserId and assignedToUserName from the request body
-    const { assignedToUserId, assignedToUserName } = req.body;
+    // Update the bug's assignedToUserId, assignedToUserName, assignedOn, and lastUpdated fields
+    const assignedBug = {
+    assignedToUserId,
+    assignedToUserName,
+    assignedOn: new Date(),
+    lastUpdated: new Date()
+    };
 
-    // Validate the request data against the schema
-    const { error } = assignBugSchema.validate({ assignedToUserId, assignedToUserName });
-
-    if (error) {
-        return res.status(400).json({ error: error.details });
+    const assignResult = await assignBug(bugId, assignedBug);
+    // Add a record to the edits collection to track the changes
+    if (assignResult.modifiedCount === 1) {
+      const editRecord = {
+        timestamp: new Date(),
+        col: 'bug',
+        op: 'update',
+        target: { bugId },
+        update: { assignedToUserId, assignedToUserName, assignedOn: bug.assignedOn, lastUpdated: bug.lastUpdated },
+        auth: req.auth,
+      };
+      await saveEdit(editRecord);
+      res.status(200).json({ message: 'Bug assigned!' });
+    }else {
+      res.status(400).json({ message: `Bug ${bugId} not assigned` });
     }
 
-    try {
-        // Query the database for the user's info based on assignedToUserId (if needed)
-
-        // Check if the bug exists
-        const bug = await getBugById(id); 
-
-        if (!bug) {
-            return res.status(404).json({ error: `Bug ${bugId} not found.` });
-        }
-
-        // Update the bug's assignedToUserId, assignedToUserName, assignedOn, and lastUpdated fields
-        bug.assignedToUserId = assignedToUserId;
-        bug.assignedToUserName = assignedToUserName;
-        bug.assignedOn = new Date();
-        bug.lastUpdated = new Date();
-
-        res.status(200).json({ message: 'Bug assigned!' });
-    } catch (err) {
-        console.error('Database error:', err);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-
+    
+  } catch (err) {
+    console.error('Database error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
+
 
 router.put("/:bugId/close", isLoggedIn(), validBody(closeBugSchema), async (req, res) => {
   const bugId = req.params.bugId;
@@ -404,18 +423,53 @@ router.put("/:bugId/close", isLoggedIn(), validBody(closeBugSchema), async (req,
   }
 });
 
-router.post('/:bugId/comment/new', validId('bugId'), validBody(bugCommentSchema), async (req, res) => {
+router.post('/:bugId/comment/new', isLoggedIn(), validId('bugId'), validBody(bugCommentSchema), async (req, res) => {
   const { bugId } = req.params;
-  const { fullName, comment } = req.body;
+
+  // Ensure user is logged in
+  if (!req.auth) {
+    return res.status(401).json({ error: 'Unauthorized. User not logged in.' });
+  }
+
+  const { fullName, comment } = req.auth; // Using req.auth for commenter's information
 
   try {
-    const result = await commentNewBug(bugId, fullName, comment);
-    res.status(result.status).json(result.json);
-  } catch (err) {
-    console.error(err);
+    const db = await connect(); // Assuming you have a function to connect to the database
+    const collection = db.collection('Bug');
+
+    // Use findOneAndUpdate to atomically update the document
+    const currentDate = new Date();
+    const commentObjectId = new ObjectId();
+    const randomUserId = new ObjectId();
+
+    const newComment = {
+      _id: commentObjectId,
+      comment,
+      fullName,
+      createdAt: currentDate.toISOString(),
+      userId: randomUserId,
+    };
+
+    const result = await collection.findOneAndUpdate(
+      { _id: new ObjectId(bugId) },
+      {
+        $push: { comments: newComment },
+        $set: { lastUpdated: currentDate.toISOString() },
+      },
+      { returnDocument: 'after' } // Return the updated document
+    );
+
+    if (!result.value) {
+      return res.status(404).json({ error: `Bug ${bugId} not found` });
+    }
+
+    res.status(200).json({ message: `Comment added to bug ${bugId}` });
+  } catch (error) {
+    console.error(error);
     res.status(500).json({ error: 'Internal server error' });
-  }
+  } 
 });
+
 
 
 router.get('/:bugId/comment/list',validId('bugId'),async (req,res) =>{
@@ -431,33 +485,38 @@ router.get('/:bugId/comment/list',validId('bugId'),async (req,res) =>{
 
 });
 
-router.get('/:bugId/comment/:commentId',validId('bugId'),validId('commentId'), async (req,res) =>{
+router.get('/:bugId/comment/:commentId', isLoggedIn(), validId('bugId'), validId('commentId'), async (req, res) => {
+  // Ensure user is logged in
+  if (!req.auth) {
+    return res.status(401).json({ error: 'Unauthorized. User not logged in.' });
+  }
+
   const { bugId, commentId } = req.params;
 
-  try{
+  try {
     const comment = await commentBugId(bugId, commentId);
 
-    if(comment){
+    if (comment) {
       res.json(comment);
-  }else {
-    res.status(404).json({error: `Comment ${commentId} not found`});
-  }
-  }catch(err){
+    } else {
+      res.status(404).json({ error: `Comment ${commentId} not found` });
+    }
+  } catch (err) {
     console.error(err);
-    res.status(500).json({error: 'Internal server error'});
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-router.put ('/:bugId/test/new',validId('bugId'),validBody(bugTestCaseSchema), async (req,res) =>{
+router.put('/:bugId/test/new', isLoggedIn(), validId('bugId'), validBody(bugTestCaseSchema), async (req, res) => {
   const { bugId } = req.params;
   const { version } = req.body;
 
-  try{
-    const result = await testCaseNewBug(bugId, version);
+  try {
+    const result = await testCaseNewBug(bugId, req.auth?.userId, version, req);
     res.status(result.status).json(result.json);
-  }catch(err){
+  } catch (err) {
     console.error(err);
-    res.status(500).json({error: 'Internal server error'});
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
