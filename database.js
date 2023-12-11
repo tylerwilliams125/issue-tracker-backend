@@ -66,13 +66,11 @@ async function loginUser(user){
  return resultUser;
 }
 
-async function updateUser(id, updatedUser){
+async function updateUser(user){
   const db = await connect();
-  const result = await db.collection("User").updateOne({_id: new ObjectId(id)},{$set:{...updatedUser}});
-  console.table(result);
+  const result = await db.collection("User").updateOne({_id:user._id},{$set:{...user}});
   return result;
 }
-
 async function deleteUser(id){
   const db = await connect();
   const result = await db.collection("User").deleteOne({_id: new ObjectId(id)});
@@ -244,7 +242,7 @@ async function testCaseNewBug(bugId, userId, version, req) {
 
     await collection.updateOne({ _id: new ObjectId(bugId) }, { $set: { testCases: bug.testCases } });
 
-    const editsCollection = db.collection('Edits');
+    const editsCollection = db.collection('Edit');
     const changeRecord = {
       timestamp: new Date(),
       col: 'testCases',

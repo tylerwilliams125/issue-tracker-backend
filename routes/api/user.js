@@ -11,7 +11,6 @@ import jwt from 'jsonwebtoken';
 import{connect, getUsers,getUserById,addUser,loginUser,updateUser,deleteUser, findRoleByName, newId,saveEdit} from '../../database.js';
 import { isLoggedIn, fetchRoles, mergePermissions, hasPermission } from '@merlin4/express-auth';
 
-
 const debugUser = debug('app:UserRouter');
 const router = express.Router();
 router.use(express.urlencoded({extended:false}));
@@ -234,26 +233,48 @@ router.post('/login', validBody(loginUserSchema), async (req, res) => {
   }
 });
 //to be fixed
-router.put('/:id', isLoggedIn(), validId('id'), validBody(updateUserSchema), async (req, res) => {
+router.put('/:userId/me', isLoggedIn(), validId('userId'), validBody(updateUserSchema), async (req, res) => {
   try {
-    debugUser('Admin Route Updating a user');
-    
+    debugUser('self Serving Route Updating a user');
+
     const updatedUser = req.body;
-    const userId = req.params.id;
+    const targetUserId = req.params.userId;
+    const loggedInUserId = req.auth._id;
+
+    // Ensure that the logged-in user is updating their own profile or is an admin
+    if (loggedInUserId !== targetUserId) {
+      return res.status(401).json({ error: 'Unauthorized: Insufficient permissions' });
+    }
 
     // Retrieve the user by ID
-    const user = await getUserById(userId);
+    const user = await getUserById(targetUserId);
 
     if (user) {
       // Update user properties based on the request body
       if (updatedUser.fullName) {
         user.fullName = updatedUser.fullName;
       }
+
+      if (updatedUser.givenName) {
+        user.givenName = updatedUser.givenName;
+      }
+
+      if (updatedUser.familyName) {
+        user.familyName = updatedUser.familyName;
+      }
+
+      if (updatedUser.email) {
+        user.email = updatedUser.email;
+      }
       if (updatedUser.password) {
         user.password = await bcrypt.hash(updatedUser.password, 10);
       }
 
       // Ensure that other fields are updated as needed
+
+      // Update common fields
+      user.lastUpdatedOn = new Date();
+      user.lastUpdatedBy = req.auth;
 
       // Perform the update operation
       const dbResult = await updateUser(user);
@@ -262,20 +283,22 @@ router.put('/:id', isLoggedIn(), validId('id'), validBody(updateUserSchema), asy
         // Log the edit
         const edit = {
           timeStamp: new Date(),
-          op: 'Admin Update User',
-          collection: 'User',
-          target: user._id,
-          update: { ...updatedUser }, // Include other updated fields if needed
+          op: 'update',
+          collection: 'user',
+          target: { userId: targetUserId },
+          update: { ...updatedUser },
           auth: req.auth,
         };
         await saveEdit(edit);
 
-        res.status(200).json({ message: `User ${userId} updated` });
+        res.status(200).json({
+          message: `User ${targetUserId} updated`,
+        });
       } else {
-        res.status(400).json({ message: `User ${userId} not updated` });
+        res.status(400).json({ message: `User ${targetUserId} not updated` });
       }
     } else {
-      res.status(404).json({ message: `User ${userId} not found` });
+      res.status(404).json({ message: `User ${targetUserId} not found` });
     }
   } catch (err) {
     console.error('Error updating user:', err);
@@ -285,16 +308,20 @@ router.put('/:id', isLoggedIn(), validId('id'), validBody(updateUserSchema), asy
 
 
 
+
 //to be fixed
-router.get('/me', isLoggedIn(),validId('userId'), async (req, res) => {
+router.get('/me', isLoggedIn(), validId('userId'), async (req, res) => {
   try {
-    debugUser('User Route Getting user data');
+    debug('User Route Getting user data');
 
     // Ensure that req.auth contains the user's authentication information
-    const userId = req.auth._id;
+    const userId = req.auth._id; // Extract user ID from authentication information
+
+    debug('userId:', userId); // Debug statement to check the value of userId
 
     // Check if the userId is a valid ObjectId
     if (!ObjectId.isValid(userId)) {
+      debug('Invalid ObjectId:', userId); // Debug statement to log invalid ObjectId
       return res.status(400).json({ error: 'Invalid user ID' });
     }
 
@@ -310,59 +337,79 @@ router.get('/me', isLoggedIn(),validId('userId'), async (req, res) => {
     }
   } catch (err) {
     // Handle any server-side errors
+    debug('Error retrieving user data:', err);
     console.error('Error retrieving user data:', err);
     res.status(500).json({ error: err.stack });
   }
 });
 //to be fixed
-router.put('/me', isLoggedIn(), validBody(updateUserSchema), validId('id'), async (req, res) => {
-  debugUser(`Self Service Route Updating a user ${JSON.stringify(req.auth)}`);
-  const updatedUser = req.body;
-
+router.put('/:userId', isLoggedIn(), validId('userId'), validBody(updateUserSchema), async (req, res) => {
   try {
-    const id = req.auth._id; // Extract user ID from authentication information
-    const user = await getUserById(id);
+    debugUser('Admin Route Updating a user');
+
+    const updatedUser = req.body;
+    const targetUserId = req.params.userId;
+
+    // Retrieve the user by ID
+    const user = await getUserById(targetUserId);
 
     if (user) {
+      // Update user properties based on the request body
       if (updatedUser.fullName) {
         user.fullName = updatedUser.fullName;
+      }
+
+      if (updatedUser.givenName) {
+        user.givenName = updatedUser.givenName;
+      }
+
+      if (updatedUser.familyName) {
+        user.familyName = updatedUser.familyName;
+      }
+
+      if (updatedUser.email) {
+        user.email = updatedUser.email;
       }
       if (updatedUser.password) {
         user.password = await bcrypt.hash(updatedUser.password, 10);
       }
 
-      // Update additional fields
+      // Ensure that other fields are updated as needed
+
+      // Update common fields
       user.lastUpdatedOn = new Date();
       user.lastUpdatedBy = req.auth;
 
+      // Perform the update operation
       const dbResult = await updateUser(user);
 
       if (dbResult.modifiedCount === 1) {
+        // Log the edit
         const edit = {
           timeStamp: new Date(),
-          op: 'Self-Edit Update User',
-          collection: 'User',
-          target: user._id,
-          update: { ...updatedUser, lastUpdatedOn: user.lastUpdatedOn, lastUpdatedBy: user.lastUpdatedBy },
+          op: 'update',
+          collection: 'user',
+          target: { userId: targetUserId },
+          update: { ...updatedUser },
           auth: req.auth,
         };
         await saveEdit(edit);
 
-        // Issue a new token with updated information
-        const authToken = await issueAuthToken(user);
-        issueAuthCookie(res, authToken);
-
-        res.status(200).json({ message: `User ${id} updated` });
+        res.status(200).json({
+          message: `User ${targetUserId} updated`,
+        });
       } else {
-        res.status(400).json({ message: `User ${id} not updated` });
+        res.status(400).json({ message: `User ${targetUserId} not updated` });
       }
     } else {
-      res.status(400).json({ message: `User ${id} not found` });
+      res.status(404).json({ message: `User ${targetUserId} not found` });
     }
   } catch (err) {
-    res.status(500).json({ error: err.stack });
+    console.error('Error updating user:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
+
 
 
 //works
