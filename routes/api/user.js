@@ -72,7 +72,7 @@ const updateUserSchema = Joi.object({
 
 
 //works
-router.get('/list', isLoggedIn(), async (req, res) => {
+router.get('/list', isLoggedIn(),hasPermission('canViewData'), async (req, res) => {
   try {
     const db = await connect();
     const collection = db.collection('User');
@@ -150,7 +150,7 @@ router.get('/list', isLoggedIn(), async (req, res) => {
   }
 });
 //works
-router.get('/:id', isLoggedIn(), validId('id'), async (req,res) => {
+router.get('/:id', isLoggedIn(), validId('id'),hasPermission('canViewData'), async (req,res) => {
   debugUser('User Route Getting user data');
   const id = req.id;
   try{
@@ -345,7 +345,7 @@ router.get('/me', isLoggedIn(), validId('userId'), async (req, res) => {
 
 
 //to be fixed
-router.put('/:userId', isLoggedIn(), validId('userId'), validBody(updateUserSchema), async (req, res) => {
+router.put('/:userId', isLoggedIn(), validId('userId'), validBody(updateUserSchema),hasPermission('canEditAnyUser'), async (req, res) => {
   try {
     debugUser('Admin Route Updating a user');
 
@@ -415,7 +415,7 @@ router.put('/:userId', isLoggedIn(), validId('userId'), validBody(updateUserSche
 
 
 //works
-router.delete('/:userId', isLoggedIn(), async (req, res) => {
+router.delete('/:userId', isLoggedIn(),hasPermission('canEditUser'), async (req, res) => {
 // Ensure that the user is logged in before proceeding
 if (!req.auth) {
   return res.status(401).json({ error: 'User not logged in' });

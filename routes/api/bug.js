@@ -10,6 +10,7 @@ import { validId } from '../../middleWare/validId.js';
 import { isLoggedIn, fetchRoles, mergePermissions, hasPermission } from '@merlin4/express-auth';
 
 
+
 const debugBug = debug ('app.BugRouter');
 
 router.use(express.urlencoded({extended:false}));
@@ -54,7 +55,7 @@ const commentSchema = Joi.object({
  comment: Joi.string().required(),
 });
 //works
-router.get('/list', isLoggedIn(), async (req, res) => {
+router.get('/list', isLoggedIn(),hasPermission('canViewData'), async (req, res) => {
   debugBug('Getting Bugs with Additional Search Functionality');
 
   try {
@@ -123,7 +124,7 @@ router.get('/list', isLoggedIn(), async (req, res) => {
 });
 
 //works
-router.get('/:bugId', isLoggedIn(), validId('bugId'), async (req, res) => {
+router.get('/:bugId', isLoggedIn(), validId('bugId'),hasPermission('canViewData'), async (req, res) => {
   const bugId = req.params.bugId;
   debugBug('Getting Bug by Id');
 
@@ -141,7 +142,7 @@ router.get('/:bugId', isLoggedIn(), validId('bugId'), async (req, res) => {
 });
 
 //works
-router.post('/new', validBody(newBugSchema), isLoggedIn(), async (req, res) => {
+router.post('/new', validBody(newBugSchema), isLoggedIn(),hasPermission('canCreateBug'), async (req, res) => {
   try {
     // Ensure that req.auth contains the user's authentication information
     const createdBy = req.auth; // Assuming you have user information in req.auth
@@ -190,7 +191,7 @@ router.post('/new', validBody(newBugSchema), isLoggedIn(), async (req, res) => {
 
 
 //works
-router.put('/:bugId', isLoggedIn(), validBody(updateBugSchema), async (req, res) => {
+router.put('/:bugId', isLoggedIn(), validBody(updateBugSchema),hasPermission('canEditAnyBug', 'canEditIfAssignedTo','canEditMyBug'), async (req, res) => {
   const bugId = req.params.bugId;
 
   try {
@@ -242,7 +243,7 @@ router.put('/:bugId', isLoggedIn(), validBody(updateBugSchema), async (req, res)
 });
 
 //works
-router.put('/:bugId/classify', isLoggedIn(), validBody(classifyBugSchema), async (req, res) => {
+router.put('/:bugId/classify', isLoggedIn(), validBody(classifyBugSchema),hasPermission('canClassifyAnyBug','canEditIfAssignedTo','canEditMyBug'), async (req, res) => {
   const bugId = req.params.bugId;
 
   // Check if bugId is a valid ObjectId
@@ -301,7 +302,7 @@ router.put('/:bugId/classify', isLoggedIn(), validBody(classifyBugSchema), async
   }
 });
 
-router.put('/:bugId/assign', isLoggedIn(), validBody(assignBugSchema), async (req, res) => {
+router.put('/:bugId/assign', isLoggedIn(), validBody(assignBugSchema),hasPermission('canReassignAnyBug','canReAssignIfAssignedTo','canEditMyBug'), async (req, res) => {
   const bugId = req.params.bugId;
 
   // Check if bugId is a valid ObjectId
@@ -363,7 +364,7 @@ router.put('/:bugId/assign', isLoggedIn(), validBody(assignBugSchema), async (re
 });
 
 
-router.put("/:bugId/close", isLoggedIn(), validBody(closeBugSchema), async (req, res) => {
+router.put("/:bugId/close", isLoggedIn(), validBody(closeBugSchema),hasPermission('canCloseAnyBug'), async (req, res) => {
   const bugId = req.params.bugId;
 
   // Check if bugId is a valid ObjectId
@@ -423,7 +424,7 @@ router.put("/:bugId/close", isLoggedIn(), validBody(closeBugSchema), async (req,
   }
 });
 
-router.post('/:bugId/comment/new', isLoggedIn(), validId('bugId'), validBody(bugCommentSchema), async (req, res) => {
+router.post('/:bugId/comment/new', isLoggedIn(), validId('bugId'), validBody(bugCommentSchema),hasPermission('canAddComments'), async (req, res) => {
   const { bugId } = req.params;
 
   // Ensure user is logged in
@@ -447,7 +448,7 @@ router.post('/:bugId/comment/new', isLoggedIn(), validId('bugId'), validBody(bug
 
 
 
-router.get('/:bugId/comment/list',validId('bugId'),async (req,res) =>{
+router.get('/:bugId/comment/list',validId('bugId'),hasPermission('canViewData'),async (req,res) =>{
   const {bugId}  = req.params;
 
   const result = await commentBugList(bugId);
@@ -460,7 +461,7 @@ router.get('/:bugId/comment/list',validId('bugId'),async (req,res) =>{
 
 });
 
-router.get('/:bugId/comment/:commentId', isLoggedIn(), validId('bugId'), validId('commentId'), async (req, res) => {
+router.get('/:bugId/comment/:commentId', isLoggedIn(), validId('bugId'),hasPermission('canViewData'), validId('commentId'), async (req, res) => {
   // Ensure user is logged in
   if (!req.auth) {
     return res.status(401).json({ error: 'Unauthorized. User not logged in.' });
@@ -482,7 +483,7 @@ router.get('/:bugId/comment/:commentId', isLoggedIn(), validId('bugId'), validId
   }
 });
 
-router.put('/:bugId/test/new', isLoggedIn(), validId('bugId'), validBody(bugTestCaseSchema), async (req, res) => {
+router.put('/:bugId/test/new', isLoggedIn(), validId('bugId'), validBody(bugTestCaseSchema),hasPermission('canAddTestCase'), async (req, res) => {
   const { bugId } = req.params;
   const { version } = req.body;
 
@@ -495,7 +496,7 @@ router.put('/:bugId/test/new', isLoggedIn(), validId('bugId'), validBody(bugTest
   }
 });
 
-router.get('/:bugId/test/list',validId('bugId'), async (req,res) =>{
+router.get('/:bugId/test/list',validId('bugId'),hasPermission('canViewData'), async (req,res) =>{
   const { bugId } = req.params;
 
   try{
@@ -508,7 +509,7 @@ router.get('/:bugId/test/list',validId('bugId'), async (req,res) =>{
 
 });
 
-router.get('/:bugId/test/:testCaseId',validId('bugId'),validId('testCaseId'), async (req,res) =>{
+router.get('/:bugId/test/:testCaseId',validId('bugId'),validId('testCaseId'),hasPermission('canViewData'), async (req,res) =>{
   const { bugId, testCaseId } = req.params;
 
   try{
@@ -525,7 +526,7 @@ router.get('/:bugId/test/:testCaseId',validId('bugId'),validId('testCaseId'), as
   }
 });  
 
-router.delete('/:bugId/test/:testCaseId',validId('bugId'),validId('testCaseId'), async (req,res) =>{
+router.delete('/:bugId/test/:testCaseId',validId('bugId'),validId('testCaseId'),hasPermission('canDeleteTestCase'), async (req,res) =>{
 
   const { bugId, testCaseId } = req.params;
   const updatedFields = {};
@@ -548,7 +549,7 @@ router.delete('/:bugId/test/:testCaseId',validId('bugId'),validId('testCaseId'),
 });
 
 
-router.put('/:bugId/test/:testCaseId', isLoggedIn(), validId('bugId'), validId('testCaseId'), validBody(bugTestCaseSchema), async (req, res) => {
+router.put('/:bugId/test/:testCaseId', isLoggedIn(), validId('bugId'), validId('testCaseId'), validBody(bugTestCaseSchema),hasPermission('canEditTestCase'), async (req, res) => {
   try {
     const { bugId, testCaseId } = req.params;
     const { version, ...updatedFields} = req.body;
