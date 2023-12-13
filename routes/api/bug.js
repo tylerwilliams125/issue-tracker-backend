@@ -1,13 +1,12 @@
 import express from 'express'
 const router = express.Router();
-import {nanoid} from 'nanoid';
 import Joi from 'joi';
 import{connect,getBugs,getBugById,addBug,updateBug,classifyBug,closeBug,assignBug,commentNewBug,commentBugList,commentBugId, testCaseNewBug, findTestCasesByBugId, findSpecificTestCaseByBugId, deleteTestCase, updateTestCaseByBugId,saveEdit } from '../../database.js';
 import debug from 'debug';
 import {ObjectId} from 'mongodb';
 import { validBody } from '../../middleWare/validBody.js';
 import { validId } from '../../middleWare/validId.js';
-import { isLoggedIn, fetchRoles, mergePermissions, hasPermission } from '@merlin4/express-auth';
+import { isLoggedIn, hasPermission } from '@merlin4/express-auth';
 
 
 
@@ -29,7 +28,7 @@ const updateBugSchema = Joi.object({
 });
 
 const classifyBugSchema = Joi.object({
-  classification: Joi.string().valid('classification1', 'classification2', 'classification3')
+  classification: Joi.string().valid('Low', 'Medium', 'High', 'Critical')
 });
 
 const assignBugSchema = Joi.object({

@@ -407,8 +407,7 @@ async function saveEdit(edit){
 
 async function findRoleByName(name){
   const db = await connect();
-  const collection = db.collection("Role");
-  const role = await collection.findOne({name: name});
+  const role = await db.collection("Role").findOne({name: name});
   return role;
 }
 // export functions
