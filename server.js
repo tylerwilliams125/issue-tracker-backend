@@ -20,7 +20,7 @@ app.use(express.json()); //accepts json data in the body of the request from the
 
 
 app.use(cors({
-    origin: 'http://localhost:5173/',
+    origin: ['http://localhost:5173','https://williams-issuetracker-backend.uc.r.appspot.com'],
     credentials: true
 }));
 
@@ -28,7 +28,7 @@ app.use(cors({
 app.use(cookieParser());
 app.use(authMiddleware(process.env.JWT_SECRET, 'authToken',{
     httpOnly:true,
-    maxAge:10006060
+    maxAge:1000*60*60
 }));
 
 //middleware
@@ -57,7 +57,7 @@ app.use((err, req, res, next) => {
 
 
 
-const port = process.env.PORT ||  5001;
+const port = process.env.PORT ||  5000;
 
 //listen on port 3003
 app.listen(port, () => {

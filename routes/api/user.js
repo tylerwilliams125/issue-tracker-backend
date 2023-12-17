@@ -51,7 +51,7 @@ const newUserSchema = Joi.object({
   password: Joi.string().required(),
   givenName: Joi.string().required(),
   familyName: Joi.string().required(),
-  fullName: Joi.string().required(),
+
 });
 
 const loginUserSchema = Joi.object({
@@ -150,15 +150,15 @@ router.get('/list', isLoggedIn(),hasPermission('canViewData'), async (req, res) 
   }
 });
 //works
-router.get('/:id', isLoggedIn(), validId('id'),hasPermission('canViewData'), async (req,res) => {
+router.get('/:userId', isLoggedIn(), validId('userId'),hasPermission('canViewData'), async (req,res) => {
   debugUser('User Route Getting user data');
-  const id = req.id;
+  const userId = req.userId;
   try{
-      const user = await getUserById(id);
+      const user = await getUserById(userId);
       if(user){
           res.status(200).json(user);
       }else{
-          res.status(404).json({message: `User ${id} not found`});
+          res.status(404).json({message: `User ${userId} not found`});
       }
   } catch(err){
       res.status(500).json({error: err.stack});
@@ -199,7 +199,7 @@ try {
 
     res.status(200).json({
       message: `New user ${newUser.fullName} added`,
-      fullName: newUser.fullName,
+      fullName: newUser.firstName + ' ' + newUser.lastName,
       role: newUser.role,
     });
   }
@@ -232,8 +232,13 @@ router.post('/login', validBody(loginUserSchema), async (req, res) => {
     res.status(401).json({ error: 'Email or password incorrect' });
   }
 });
-//to be fixed
-router.put('/:userId/me', isLoggedIn(), validId('userId'), validBody(updateUserSchema), async (req, res) => {
+
+router.post('/logout', isLoggedIn(), async (req,res) => {
+  res.clearCookie('authToken');
+  res.status(200).json({message:'Logged Out'});
+});
+//works
+router.put('/me', isLoggedIn(), validId('userId'), validBody(updateUserSchema), async (req, res) => {
   try {
     debugUser('self Serving Route Updating a user');
 
@@ -309,7 +314,7 @@ router.put('/:userId/me', isLoggedIn(), validId('userId'), validBody(updateUserS
 
 
 
-//to be fixed
+//works
 router.get('/me', isLoggedIn(), validId('userId'), async (req, res) => {
   try {
     debug('User Route Getting user data');
@@ -344,7 +349,7 @@ router.get('/me', isLoggedIn(), validId('userId'), async (req, res) => {
 });
 
 
-//to be fixed
+//works
 router.put('/:userId', isLoggedIn(), validId('userId'), validBody(updateUserSchema),hasPermission('canEditAnyUser'), async (req, res) => {
   try {
     debugUser('Admin Route Updating a user');
