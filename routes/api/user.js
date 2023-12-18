@@ -47,7 +47,6 @@ function issueAuthCookie(res, authToken){
 
 const newUserSchema = Joi.object({
   email: Joi.string().email().required(),
-
   password: Joi.string().required(),
   givenName: Joi.string().required(),
   familyName: Joi.string().required(),
@@ -199,7 +198,7 @@ try {
 
     res.status(200).json({
       message: `New user ${newUser.fullName} added`,
-      fullName: newUser.firstName + ' ' + newUser.lastName,
+      fullName: newUser.givenName + ' ' + newUser.familyName,
       role: newUser.role,
     });
   }
