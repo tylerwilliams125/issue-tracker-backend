@@ -33,7 +33,6 @@ const classifyBugSchema = Joi.object({
 
 const assignBugSchema = Joi.object({
   assignedToUserId: Joi.string().required(),
-  assignedToUserName: Joi.string().required(),
 });
 
 const closeBugSchema = Joi.object({

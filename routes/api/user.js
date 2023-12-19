@@ -169,6 +169,7 @@ router.post('/register', validBody(newUserSchema), async (req, res) => {
  const newUser = {
   _id: newId(),
   ...req.body,
+  fullName: req.body.givenName + ' ' + req.body.familyName,
   createdOn: new Date(),
   role: ['developer'],
 };
