@@ -45,12 +45,11 @@ async function getUsers(){
   return users;
 }
 
-async function getUserById(id){
+async function getUserById(id) {
   const db = await connect();
-  const users = await db.collection("User").findOne({_id: new ObjectId(id)});
-  return users;
+  const user = await db.collection('User').findOne({ _id: new ObjectId(id) });
+  return user;
 }
-
 
 async function addUser(user){
   const db = await connect();

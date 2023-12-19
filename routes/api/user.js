@@ -151,7 +151,7 @@ router.get('/list', isLoggedIn(),hasPermission('canViewData'), async (req, res) 
 //works
 router.get('/:userId', isLoggedIn(), validId('userId'),hasPermission('canViewData'), async (req,res) => {
   debugUser('User Route Getting user data');
-  const userId = req.userId;
+  const userId = req.params.userId;
   try{
       const user = await getUserById(userId);
       if(user){
