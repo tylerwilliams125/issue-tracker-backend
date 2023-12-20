@@ -238,7 +238,7 @@ router.post('/logout', isLoggedIn(), async (req,res) => {
   res.status(200).json({message:'Logged Out'});
 });
 //works
-router.put('/me', isLoggedIn(), validId('userId'), validBody(updateUserSchema), async (req, res) => {
+router.put('/me', isLoggedIn(), validBody(updateUserSchema), async (req, res) => {
   try {
     debugUser('self Serving Route Updating a user');
 
@@ -318,9 +318,10 @@ router.put('/me', isLoggedIn(), validId('userId'), validBody(updateUserSchema), 
 router.get('/me', isLoggedIn(), validId('userId'), async (req, res) => {
   try {
     debug('User Route Getting user data');
-
+      
     // Ensure that req.auth contains the user's authentication information
-    const userId = req.auth._id; // Extract user ID from authentication information
+    const userId = req.auth.user._id;
+    // Extract user ID from authentication information
 
     debug('userId:', userId); // Debug statement to check the value of userId
 
@@ -336,6 +337,7 @@ router.get('/me', isLoggedIn(), validId('userId'), async (req, res) => {
     if (user) {
       // Return user data to the client
       res.status(200).json(user);
+      
     } else {
       // User not found in the database
       res.status(404).json({ message: `User ${userId} not found` });
@@ -346,7 +348,13 @@ router.get('/me', isLoggedIn(), validId('userId'), async (req, res) => {
     console.error('Error retrieving user data:', err);
     res.status(500).json({ error: err.stack });
   }
+
+
+
+
+
 });
+
 
 
 //works

@@ -51,6 +51,8 @@ async function getUserById(id) {
   return user;
 }
 
+
+
 async function addUser(user){
   const db = await connect();
   user.role = ['developer'];
@@ -126,7 +128,7 @@ async function assignBug(id, assignedBug){
   return result;
 }
 
-async function commentNewBug(bugId, fullName, comment) {
+async function commentNewBug(bugId, email, comment) {
   try {
     const db = await connect(); // Assuming you have a function to connect to the database
     const collection = db.collection('Bug');
@@ -139,7 +141,7 @@ async function commentNewBug(bugId, fullName, comment) {
     const newComment = {
       _id: commentObjectId,
       comment,
-      fullName: req.auth.fullName,
+      email, // Use the provided email parameter
       createdAt: currentDate.toISOString(),
       userId: randomUserId,
     };
@@ -163,6 +165,7 @@ async function commentNewBug(bugId, fullName, comment) {
     return { status: 500, json: { error: 'Internal server error' } };
   }
 }
+
 
 async function commentBugList(bugId){
   const db = await connect();

@@ -33,6 +33,7 @@ const classifyBugSchema = Joi.object({
 
 const assignBugSchema = Joi.object({
   assignedToUserId: Joi.string().required(),
+  assignedToUserName: Joi.string().required(),
 });
 
 const closeBugSchema = Joi.object({
@@ -46,6 +47,7 @@ const bugCommentSchema = Joi.object({
 
 const bugTestCaseSchema = Joi.object({
   version: Joi.string().min(1).max(50).required(),
+  passed: Joi.boolean().required(),
 });
 
 const commentSchema = Joi.object({
@@ -431,9 +433,9 @@ router.post('/:bugId/comment/new', isLoggedIn(), validId('bugId'), validBody(bug
   }
 
   const { comment } = req.body; // Extract from req.body
-  const fullName = req.auth; // Extract from req.auth
+  const email = req.auth; // Extract from req.auth
   try {
-    const result = await commentNewBug(bugId, fullName, comment);
+    const result = await commentNewBug(bugId, email, comment);
 
     
       res.status(200).json({ message: `Comment added to bug ${bugId}` });
