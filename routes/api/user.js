@@ -8,6 +8,8 @@ import bcrypt from 'bcrypt';
 import { config } from 'dotenv';
 import {nanoid} from 'nanoid';
 import jwt from 'jsonwebtoken';
+
+import nodemailer from 'nodemailer';
 import{connect, getUsers,getUserById,addUser,loginUser,updateUser,deleteUser, findRoleByName, newId,saveEdit} from '../../database.js';
 import { isLoggedIn, fetchRoles, mergePermissions, hasPermission } from '@merlin4/express-auth';
 
@@ -67,7 +69,36 @@ const updateUserSchema = Joi.object({
   role: Joi.string().valid(`developer`, `business analyst`, `quality analyst`, `product manager`, `technical manager`),
 });
 
+function sendConfirmationEmail(userEmail, userName) {
+  const transporter = nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false, // true for 465, false for other ports
+    auth: {
+      user: 'tylerkwilliams125@gmail.com',
+      pass: 'jbvu wcix stem baij',
+    },
+    
+  },);
+  
 
+  const mailOptions = {
+    from: 'tylerkwilliams125@gmail.com',
+    to: userEmail,
+    subject: 'Thank You for Registering',
+    text: `Dear ${userName},\n\nThank you for registering to this issue tracker!`,
+  };
+
+  transporter.sendMail(mailOptions, (error, info) => {
+    if (error) {
+      console.error('Error sending confirmation email:', error);
+      // Handle the error
+    } else {
+      console.log('Confirmation email sent:', info.response);
+      // Handle success
+    }
+  });
+}
 
 
 //works
@@ -165,49 +196,55 @@ router.get('/:userId', isLoggedIn(), validId('userId'),hasPermission('canViewDat
 });
 //works
 router.post('/register', validBody(newUserSchema), async (req, res) => {
- // Create a new user object with additional information
- const newUser = {
-  _id: newId(),
-  ...req.body,
-  fullName: req.body.givenName + ' ' + req.body.familyName,
-  createdOn: new Date(),
-  role: ['developer'],
-};
+  // Create a new user object with additional information
+  const newUser = {
+    _id: newId(),
+    ...req.body,
+    fullName: req.body.givenName + ' ' + req.body.familyName,
+    createdOn: new Date(),
+    role: ['developer'],
+  };
 
-// Hash the password using bcrypt
-newUser.password = await bcrypt.hash(newUser.password, 10);
+  // Hash the password using bcrypt
+  newUser.password = await bcrypt.hash(newUser.password, 10);
 
-try {
-  // Add the user to the users collection
-  const result = await addUser(newUser);
+  try {
+    // Add the user to the users collection
+    const result = await addUser(newUser);
 
-  if (result.acknowledged) {
-    // Add a record to the edits collection to track the changes
-    const edit = {
-      timestamp: new Date(),
-      col: 'user',
-      op: 'insert',
-      target: { userId: newUser._id },
-      update: newUser,
-    };
+    if (result.acknowledged) {
+      // Send a confirmation email
+      sendConfirmationEmail(newUser.email, newUser.fullName);
 
-    await saveEdit(edit);
+      // Add a record to the edits collection to track the changes
+      const edit = {
+        timestamp: new Date(),
+        col: 'user',
+        op: 'insert',
+        target: { userId: newUser._id },
+        update: newUser,
+      };
 
-    // Ready to create the cookie and JWT Token
-    const authToken = await issueAuthToken(newUser);
-    issueAuthCookie(res, authToken);
+      await saveEdit(edit);
 
-    res.status(200).json({
-      message: `New user ${newUser.fullName} added`,
-      fullName: newUser.givenName + ' ' + newUser.familyName,
-      role: newUser.role,
-    });
+      // Ready to create the cookie and JWT Token
+      const authToken = await issueAuthToken(newUser);
+      issueAuthCookie(res, authToken);
+
+      res.status(200).json({
+        message: `New user ${newUser.fullName} added. Check your email for a confirmation message.`,
+        fullName: newUser.givenName + ' ' + newUser.familyName,
+        role: newUser.role,
+      });
+    }
+  } catch (err) {
+    console.error('Error registering user:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
-} catch (err) {
-  console.error('Error registering user:', err);
-  res.status(500).json({ error: 'Internal server error' });
-}
 });
+
+// Function to send a confirmation email
+
 //works
 router.post('/login', validBody(loginUserSchema), async (req, res) => {
   const user = req.body;

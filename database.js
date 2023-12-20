@@ -312,7 +312,9 @@ async function deleteTestCase(bugId, testCaseId) {
         },
       },
     };
-
+    if (!req.auth) {
+      return { status: 401, json: { error: 'Unauthorized. User not logged in.' } };
+    }
     console.log('Update:', update);
 
     const result = await collection.updateOne(filter, update);
@@ -412,6 +414,8 @@ async function findRoleByName(name){
   const role = await db.collection("Role").findOne({name: name});
   return role;
 }
+
+
 // export functions
 export {newId,connect,ping,getUsers,getUserById,addUser,loginUser,updateUser,deleteUser,getBugs,getBugById,addBug,updateBug,classifyBug,closeBug,assignBug,commentNewBug,commentBugList,commentBugId, testCaseNewBug, findTestCasesByBugId, findSpecificTestCaseByBugId, deleteTestCase, updateTestCaseByBugId,findRoleByName, saveEdit};
 

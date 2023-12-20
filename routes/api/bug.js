@@ -526,24 +526,27 @@ router.get('/:bugId/test/:testCaseId',validId('bugId'),validId('testCaseId'),has
   }
 });  
 
-router.delete('/:bugId/test/:testCaseId',validId('bugId'),validId('testCaseId'),hasPermission('canDeleteTestCase'), async (req,res) =>{
+router.delete('/:bugId/test/:testCaseId', validId('bugId'), validId('testCaseId'), hasPermission('canDeleteTestCase'), async (req, res) => {
 
   const { bugId, testCaseId } = req.params;
   const updatedFields = {};
-
-  try{
+ 
+  try {
     const result = await deleteTestCase(bugId, testCaseId, updatedFields, req);
-    
+
     if (result.status === 204) {
-      const authToken = issueAuthToken(bug);
-    }else if(result.status === 404){
+          const authToken = await issueAuthToken(bug);
+
+          issueAuthCookie(res, authToken);
+      // Use the authToken as needed
+    } else if (result.status === 404) {
       res.status(result.status).json(result.json);
-    }else{
+    } else {
       res.status(500).send('Internal server error');
     }
-  }catch(error){
+  } catch (error) {
     console.error(error);
-    res.status(500).json({error: 'Internal server error'});
+    res.status(500).json({ error: 'Internal server error' });
   }
 
 });
